@@ -9,6 +9,8 @@ extern crate spin;
 extern crate alloc;
 extern crate bit_set;
 
+mod dirty;
+mod vfs;
 mod sfs;
 mod structs;
 #[cfg(test)]

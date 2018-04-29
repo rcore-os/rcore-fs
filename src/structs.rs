@@ -1,3 +1,6 @@
+use core::slice;
+use core::mem::size_of_val;
+
 /// On-disk superblock
 #[repr(C, packed)]
 pub struct SuperBlock {
@@ -14,7 +17,7 @@ pub struct SuperBlock {
 /// inode (on disk)
 #[repr(C, packed)]
 #[derive(Debug)]
-pub struct DiskInode {
+pub struct DiskINode {
     /// size of the file (in bytes)
     pub size: u32,
     /// one of SYS_TYPE_* above
@@ -35,7 +38,7 @@ pub struct DiskInode {
 #[repr(C, packed)]
 pub struct DiskEntry {
     /// inode number
-    pub inode_number: u32,
+    pub id: u32,
     /// file name
     pub name: [u8; MAX_FNAME_LEN + 1],
 }
@@ -45,6 +48,19 @@ impl SuperBlock {
         self.magic == MAGIC
     }
 }
+
+/// Convert structs to [u8] slice
+pub trait AsBuf {
+    fn as_buf(&self) -> &[u8] {
+        unsafe{ slice::from_raw_parts(self as *const _ as *const u8, size_of_val(self)) }
+    }
+    fn as_buf_mut(&mut self) -> &mut [u8] {
+        unsafe{ slice::from_raw_parts_mut(self as *mut _ as *mut u8, size_of_val(self)) }
+    }
+}
+
+impl AsBuf for SuperBlock {}
+impl AsBuf for DiskINode {}
 
 /*
  * Simple FS (SFS) definitions visible to ucore. This covers the on-disk format
@@ -76,4 +92,17 @@ pub const BLK_NENTRY: usize = BLKSIZE / 4;
 /// file types
 pub enum FileType {
     Invalid = 0, File = 1, Dir = 2, Link = 3,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn struct_size() {
+        use core::mem::size_of;
+        assert!(size_of::<SuperBlock>() <= BLKSIZE);
+        assert!(size_of::<DiskINode>() <= BLKSIZE);
+        assert!(size_of::<DiskEntry>() <= BLKSIZE);
+    }
 }
