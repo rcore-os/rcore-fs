@@ -1,3 +1,5 @@
+//! On-disk structures in SFS
+
 use core::slice;
 use core::mem::size_of_val;
 

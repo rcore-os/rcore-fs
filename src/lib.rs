@@ -13,5 +13,6 @@ mod dirty;
 mod vfs;
 mod sfs;
 mod structs;
+mod c_interface;
 #[cfg(test)]
 mod tests;
