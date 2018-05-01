@@ -72,6 +72,13 @@ impl Debug for Str32 {
         write!(f, "{}", String::from_utf8_lossy(&self.0[0 .. len]))
     }
 }
+impl Str32 {
+    pub fn from_slice(s: &[u8]) -> Self {
+        let mut ret = [0u8; 32];
+        ret[0..s.len()].copy_from_slice(s);
+        Str32(ret)
+    }
+}
 
 impl SuperBlock {
     pub fn check(&self) -> bool {

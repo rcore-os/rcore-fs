@@ -16,6 +16,14 @@ impl<T> Dirty<T> {
         }
     }
 
+    /// Create a new Dirty with dirty set
+    pub fn new_dirty(val: T) -> Dirty<T> {
+        Dirty {
+            value: val,
+            dirty: true,
+        }
+    }
+
     /// Returns true if dirty, false otherwise
     #[allow(dead_code)]
     pub fn dirty(&self) -> bool {

@@ -104,7 +104,7 @@ impl vfs::INode for INode {
         for BlockRange { block, begin, end } in iter {
             if let Some(disk_block_id) = self.disk_block_id(block) {
                 let len = end - begin;
-                fs.borrow_mut().device.read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]);
+                fs.borrow_mut().device.read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]).unwrap();
                 buf_offset += len;
             } else {
                 // Failed this time
@@ -126,7 +126,7 @@ impl vfs::INode for INode {
         for BlockRange { block, begin, end } in iter {
             if let Some(disk_block_id) = self.disk_block_id(block) {
                 let len = end - begin;
-                fs.borrow_mut().device.write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]);
+                fs.borrow_mut().device.write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]).unwrap();
                 buf_offset += len;
             } else {
                 // Failed this time
@@ -192,7 +192,7 @@ pub struct SimpleFileSystem {
     /// on-disk superblock
     super_block: Dirty<SuperBlock>,
     /// blocks in use are mared 0
-    free_map: BitSet,
+    free_map: Dirty<BitSet>,
     /// inode list
     inodes: BTreeMap<INodeId, Ptr<INode>>,
     /// device
@@ -202,23 +202,51 @@ pub struct SimpleFileSystem {
 }
 
 impl SimpleFileSystem {
-    /// Create a new SFS with device
-    pub fn new(mut device: Box<Device>) -> Option<Ptr<Self>> {
+    /// Load SFS from device
+    pub fn open(mut device: Box<Device>) -> Option<Ptr<Self>> {
         let super_block = load_struct::<SuperBlock>(device.as_mut(), BLKN_SUPER);
         if super_block.check() == false {
             return None;
         }
+        let free_map = load_struct::<[u8; BLKSIZE]>(device.as_mut(), BLKN_FREEMAP);
 
-        let mut fs = Rc::new(RefCell::new(SimpleFileSystem {
+        Some(SimpleFileSystem {
             super_block: Dirty::new(super_block),
-            free_map: BitSet::new(),
+            free_map: Dirty::new(BitSet::from_bytes(&free_map)),
             inodes: BTreeMap::<INodeId, Ptr<INode>>::new(),
             device,
             self_ptr: Weak::default(),
-        }));
-        fs.borrow_mut().self_ptr = Rc::downgrade(&fs);
+        }.wrap())
+    }
+    /// Create a new SFS on blank disk
+    pub fn create(mut device: Box<Device>, space: usize) -> Ptr<Self> {
+        let blocks = (space / BLKSIZE).min(BLKBITS);
+        assert!(blocks >= 16, "space too small");
 
-        Some(fs)
+        let super_block = SuperBlock {
+            magic: MAGIC,
+            blocks: blocks as u32,
+            unused_blocks: blocks as u32 - 3,
+            info: Str32::from_slice(b"simple file system"),
+        };
+        let mut free_map = BitSet::with_capacity(BLKBITS);
+        for i in 3 .. blocks {
+            free_map.insert(i);
+        }
+        SimpleFileSystem {
+            super_block: Dirty::new_dirty(super_block),
+            free_map: Dirty::new_dirty(free_map),
+            inodes: BTreeMap::<INodeId, Ptr<INode>>::new(),
+            device,
+            self_ptr: Weak::default(),
+        }.wrap()
+    }
+    /// Wrap pure SimpleFileSystem with Rc<RefCell<...>>
+    /// Used in constructors
+    fn wrap(self) -> Ptr<Self> {
+        let mut fs = Rc::new(RefCell::new(self));
+        fs.borrow_mut().self_ptr = Rc::downgrade(&fs);
+        fs
     }
     /// Allocate a block, return block id
     fn alloc_block(&mut self) -> Option<usize> {
@@ -264,12 +292,17 @@ impl vfs::FileSystem for SimpleFileSystem {
         let SimpleFileSystem {
             ref mut super_block,
             ref mut device,
+            ref mut free_map,
             ..
         } = self;
 
         if super_block.dirty() {
-            device.write_at(0, super_block.as_buf());
+            device.write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf()).unwrap();
             super_block.sync();
+        }
+        if free_map.dirty() {
+            device.write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf()).unwrap();
+            free_map.sync();
         }
         Ok(())
     }
@@ -287,6 +320,14 @@ impl vfs::FileSystem for SimpleFileSystem {
     }
 }
 
+impl Drop for SimpleFileSystem {
+    /// Auto sync when drop
+    fn drop(&mut self) {
+        use vfs::FileSystem;
+        self.sync().expect("failed to sync");
+    }
+}
+
 trait BitsetAlloc {
     fn alloc(&mut self) -> Option<usize>;
 }
@@ -301,6 +342,19 @@ impl BitsetAlloc for BitSet {
         id
     }
 }
+
+impl AsBuf for BitSet {
+    fn as_buf(&self) -> &[u8] {
+        let slice = self.get_ref().storage();
+        unsafe{ slice::from_raw_parts(slice as *const _ as *const u8, slice.len() * 4) }
+    }
+    fn as_buf_mut(&mut self) -> &mut [u8] {
+        let slice = self.get_ref().storage();
+        unsafe{ slice::from_raw_parts_mut(slice as *const _ as *mut u8, slice.len() * 4) }
+    }
+}
+
+impl AsBuf for [u8; BLKSIZE] {}
 
 #[cfg(test)]
 mod test {

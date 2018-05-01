@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write, Seek, SeekFrom};
 use std::boxed::Box;
 use super::sfs::*;
@@ -26,9 +26,9 @@ impl Device for File {
 fn test() {
     let file = File::open("sfs.img")
         .expect("failed to open sfs.img");
-    let sfs = SimpleFileSystem::new(Box::new(file))
+    let sfs = SimpleFileSystem::open(Box::new(file))
         .expect("failed to create SFS");
-    let mut root = sfs.borrow_mut().root_inode();
+    let root = sfs.borrow_mut().root_inode();
     println!("{:?}", root);
 
     use super::structs::{DiskEntry, AsBuf};
@@ -39,4 +39,14 @@ fn test() {
         root.borrow_mut().read_at(i * 4096, entry.as_buf_mut());
         println!("{:?}", entry);
     }
+}
+
+#[test]
+fn create() {
+    let file = OpenOptions::new()
+        .read(true).write(true).create(true).open("test.img")
+        .expect("failed to create file");
+    let sfs = SimpleFileSystem::create(Box::new(file), 16 * 4096);
+
+
 }
