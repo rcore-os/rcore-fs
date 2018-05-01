@@ -92,7 +92,7 @@ pub trait AsBuf {
 impl AsBuf for SuperBlock {}
 impl AsBuf for DiskINode {}
 impl AsBuf for DiskEntry {}
-impl AsBuf for BlockId {}
+impl AsBuf for u32 {}
 
 /*
  * Simple FS (SFS) definitions visible to ucore. This covers the on-disk format

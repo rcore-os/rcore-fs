@@ -69,7 +69,7 @@ impl INode {
             id if id < NDIRECT =>
                 Some(self.disk_inode.direct[id] as BlockId),
             id if id < NDIRECT + BLK_NENTRY => {
-                let mut disk_block_id: BlockId = 0;
+                let mut disk_block_id: u32 = 0;
                 let fs = self.fs.upgrade().unwrap();
                 fs.borrow_mut().device.read_block(
                     self.disk_inode.indirect as usize,
@@ -92,8 +92,7 @@ impl vfs::INode for INode {
         self.sync()
     }
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
-        let fs0 = self.fs.upgrade().unwrap();
-        let mut fs = fs0.borrow_mut();
+        let fs = self.fs.upgrade().unwrap();
 
         let iter = BlockIter {
             begin: offset,
@@ -105,7 +104,7 @@ impl vfs::INode for INode {
         for BlockRange { block, begin, end } in iter {
             if let Some(disk_block_id) = self.disk_block_id(block) {
                 let len = end - begin;
-                fs.device.read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]);
+                fs.borrow_mut().device.read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]);
                 buf_offset += len;
             } else {
                 // Failed this time
@@ -115,8 +114,7 @@ impl vfs::INode for INode {
         Some(buf_offset)
     }
     fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
-        let fs0 = self.fs.upgrade().unwrap();
-        let mut fs = fs0.borrow_mut();
+        let fs = self.fs.upgrade().unwrap();
 
         let iter = BlockIter {
             begin: offset,
@@ -128,7 +126,7 @@ impl vfs::INode for INode {
         for BlockRange { block, begin, end } in iter {
             if let Some(disk_block_id) = self.disk_block_id(block) {
                 let len = end - begin;
-                fs.device.write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]);
+                fs.borrow_mut().device.write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]);
                 buf_offset += len;
             } else {
                 // Failed this time
@@ -166,6 +164,7 @@ struct BlockIter {
     end: usize,
 }
 
+#[derive(Debug)]
 struct BlockRange {
     block: BlockId,
     begin: usize,
