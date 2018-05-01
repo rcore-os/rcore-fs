@@ -7,6 +7,7 @@ use super::structs::*;
 use super::vfs;
 use core::mem::{uninitialized, size_of};
 use core::slice;
+use core::fmt::{Debug, Formatter, Error};
 
 /// Interface for SFS to read & write
 ///     TODO: use std::io::{Read, Write}
@@ -32,14 +33,28 @@ pub trait Device {
     }
 }
 
+/// Load struct `T` from given block in device
+///     Workaround: It should be inside the trait `Device`. But that would cause compile error.
+fn load_struct<T: AsBuf>(device: &mut Device, id: BlockId) -> T {
+    let mut s: T = unsafe{ uninitialized() };
+    device.read_block(id, 0, s.as_buf_mut()).unwrap();
+    s
+}
+
 /// inode for sfs
 pub struct INode {
     /// on-disk inode
     disk_inode: Dirty<DiskINode>,
     /// inode number
     id: INodeId,
-    /// Reference to SFS, used by almost all operations
-    fs: Rc<RefCell<SimpleFileSystem>>,
+    /// Weak reference to SFS, used by almost all operations
+    fs: Weak<RefCell<SimpleFileSystem>>,
+}
+
+impl Debug for INode {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{:?}", *self.disk_inode)
+    }
 }
 
 impl INode {
@@ -52,7 +67,8 @@ impl INode {
                 Some(self.disk_inode.direct[id] as BlockId),
             id if id < NDIRECT + BLK_NENTRY => {
                 let mut disk_block_id: BlockId = 0;
-                self.fs.borrow_mut().device.read_block(
+                let fs = self.fs.upgrade().unwrap();
+                fs.borrow_mut().device.read_block(
                     self.disk_inode.indirect as usize,
                     ENTRY_SIZE * (id - NDIRECT),
                     disk_block_id.as_buf_mut()
@@ -73,7 +89,8 @@ impl vfs::INode for INode {
         self.sync()
     }
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
-        let mut fs = self.fs.borrow_mut();
+        let fs0 = self.fs.upgrade().unwrap();
+        let mut fs = fs0.borrow_mut();
 
         let iter = BlockIter {
             begin: offset,
@@ -95,7 +112,8 @@ impl vfs::INode for INode {
         Some(buf_offset)
     }
     fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
-        let mut fs = self.fs.borrow_mut();
+        let fs0 = self.fs.upgrade().unwrap();
+        let mut fs = fs0.borrow_mut();
 
         let iter = BlockIter {
             begin: offset,
@@ -118,7 +136,8 @@ impl vfs::INode for INode {
     }
     fn sync(&mut self) -> Result<(), ()> {
         if self.disk_inode.dirty() {
-            let mut fs = self.fs.borrow_mut();
+            let fs0 = self.fs.upgrade().unwrap();
+            let mut fs = fs0.borrow_mut();
             fs.device.write_block(self.id, 0, self.disk_inode.as_buf())?;
             self.disk_inode.sync();
         }
@@ -164,25 +183,28 @@ pub struct SimpleFileSystem {
     inodes: BTreeMap<INodeId, Rc<INode>>,
     /// device
     device: Box<Device>,
+    /// Pointer to self, used by INodes
+    self_ptr: Weak<RefCell<SimpleFileSystem>>,
 }
 
 impl SimpleFileSystem {
     /// Create a new SFS with device
-    pub fn new(mut device: Box<Device>) -> Option<Self> {
-        let mut super_block: SuperBlock = unsafe{ uninitialized() };
-        if device.read_at(BLKN_SUPER * BLKSIZE, super_block.as_buf_mut()).is_none() {
-            return None;
-        }
+    pub fn new(mut device: Box<Device>) -> Option<Rc<RefCell<Self>>> {
+        let super_block = load_struct::<SuperBlock>(device.as_mut(), BLKN_SUPER);
         if super_block.check() == false {
             return None;
         }
 
-        Some(SimpleFileSystem {
+        let mut fs = Rc::new(RefCell::new(SimpleFileSystem {
             super_block: Dirty::new(super_block),
             free_map: BitSet::new(),
             inodes: BTreeMap::<INodeId, Rc<INode>>::new(),
             device,
-        })
+            self_ptr: Weak::default(),
+        }));
+        fs.borrow_mut().self_ptr = Rc::downgrade(&fs);
+
+        Some(fs)
     }
     /// Allocate a block, return block id
     fn alloc_block(&mut self) -> Option<usize> {
@@ -198,12 +220,33 @@ impl SimpleFileSystem {
         self.free_map.insert(block_id);
         self.super_block.unused_blocks += 1;
     }
-    /// Get inode by id
-    fn get_inode(&self, id: INodeId) -> Option<Rc<INode>> {
-        self.inodes.get(&id).map(|rc| rc.clone())
+
+    /// Get inode by id. Load if not in memory.
+    /// ** Must ensure it's a valid INode **
+    fn get_inode(&mut self, id: INodeId) -> Rc<INode> {
+        assert!(!self.free_map.contains(id));
+
+        // Load if not in memory.
+        if !self.inodes.contains_key(&id) {
+            let disk_inode = load_struct::<DiskINode>(self.device.as_mut(), id);
+            let inode = Rc::new(INode {
+                disk_inode: Dirty::new(disk_inode),
+                id,
+                fs: self.self_ptr.clone(),
+            });
+            self.inodes.insert(id, inode.clone());
+            inode
+        } else {
+            self.inodes.get(&id).unwrap().clone()
+        }
     }
+}
+
+impl vfs::FileSystem for SimpleFileSystem {
+    type INode = INode;
+
     /// Write back super block if dirty
-    fn sync(&mut self) {
+    fn sync(&mut self) -> Result<(), ()> {
         let SimpleFileSystem {
             ref mut super_block,
             ref mut device,
@@ -214,18 +257,11 @@ impl SimpleFileSystem {
             device.write_at(0, super_block.as_buf());
             super_block.sync();
         }
-    }
-}
-
-impl vfs::FileSystem for SimpleFileSystem {
-    type INode = INode;
-
-    fn sync(&mut self) -> Result<(), ()> {
-        unimplemented!()
+        Ok(())
     }
 
     fn root_inode(&mut self) -> Rc<INode> {
-        unimplemented!()
+        self.get_inode(BLKN_ROOT)
     }
 
     fn unmount(&mut self) -> Result<(), ()> {

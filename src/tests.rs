@@ -26,7 +26,8 @@ impl Device for File {
 fn test() {
     let file = File::open("sfs.img")
         .expect("failed to open sfs.img");
-    let mut sfs = SimpleFileSystem::new(Box::new(file))
+    let sfs = SimpleFileSystem::new(Box::new(file))
         .expect("failed to create SFS");
-//    let root = sfs.root_inode();
+    let root = sfs.borrow_mut().root_inode();
+    println!("{:?}", root);
 }

@@ -38,7 +38,7 @@ pub struct DiskINode {
 
 #[repr(C, packed)]
 pub struct IndirectBlock {
-    pub entrys: [u32; BLK_NENTRY],
+    pub entries: [u32; BLK_NENTRY],
 }
 
 /// file entry (on disk)
