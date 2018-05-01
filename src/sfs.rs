@@ -17,14 +17,14 @@ pub trait Device {
 
     // Helper functions
 
-    fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> Result<(),()> {
+    fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> Result<(), ()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.read_at(id * BLKSIZE + offset, buf) {
             Some(len) if len == buf.len() => Ok(()),
             _ => Err(()),
         }
     }
-    fn write_block(&mut self, id: BlockId, offset: usize, buf: &[u8]) -> Result<(),()> {
+    fn write_block(&mut self, id: BlockId, offset: usize, buf: &[u8]) -> Result<(), ()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.write_at(id * BLKSIZE + offset, buf) {
             Some(len) if len == buf.len() => Ok(()),
@@ -36,10 +36,13 @@ pub trait Device {
 /// Load struct `T` from given block in device
 ///     Workaround: It should be inside the trait `Device`. But that would cause compile error.
 fn load_struct<T: AsBuf>(device: &mut Device, id: BlockId) -> T {
-    let mut s: T = unsafe{ uninitialized() };
+    let mut s: T = unsafe { uninitialized() };
     device.read_block(id, 0, s.as_buf_mut()).unwrap();
     s
 }
+
+type Ptr<T> = Rc<RefCell<T>>;
+type WeakPtr<T> = Weak<RefCell<T>>;
 
 /// inode for sfs
 pub struct INode {
@@ -48,7 +51,7 @@ pub struct INode {
     /// inode number
     id: INodeId,
     /// Weak reference to SFS, used by almost all operations
-    fs: Weak<RefCell<SimpleFileSystem>>,
+    fs: WeakPtr<SimpleFileSystem>,
 }
 
 impl Debug for INode {
@@ -71,10 +74,10 @@ impl INode {
                 fs.borrow_mut().device.read_block(
                     self.disk_inode.indirect as usize,
                     ENTRY_SIZE * (id - NDIRECT),
-                    disk_block_id.as_buf_mut()
+                    disk_block_id.as_buf_mut(),
                 ).unwrap();
                 Some(disk_block_id as BlockId)
-            },
+            }
             id => unimplemented!("double indirect blocks is not supported"),
         }
     }
@@ -99,10 +102,10 @@ impl vfs::INode for INode {
 
         // Read for each block
         let mut buf_offset = 0usize;
-        for BlockRange{block, begin, end} in iter {
+        for BlockRange { block, begin, end } in iter {
             if let Some(disk_block_id) = self.disk_block_id(block) {
                 let len = end - begin;
-                fs.device.read_block(disk_block_id, begin, &mut buf[buf_offset .. buf_offset + len]);
+                fs.device.read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]);
                 buf_offset += len;
             } else {
                 // Failed this time
@@ -122,10 +125,10 @@ impl vfs::INode for INode {
 
         // Read for each block
         let mut buf_offset = 0usize;
-        for BlockRange{block, begin, end} in iter {
+        for BlockRange { block, begin, end } in iter {
             if let Some(disk_block_id) = self.disk_block_id(block) {
                 let len = end - begin;
-                fs.device.write_block(disk_block_id, begin, &buf[buf_offset .. buf_offset + len]);
+                fs.device.write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]);
                 buf_offset += len;
             } else {
                 // Failed this time
@@ -133,6 +136,15 @@ impl vfs::INode for INode {
             }
         }
         Some(buf_offset)
+    }
+    fn info(&mut self) -> Result<vfs::FileInfo, ()> {
+        if self.disk_inode.type_ != FileType::File {
+            return Err(());
+        }
+        Ok(vfs::FileInfo {
+            size: self.disk_inode.size as usize,
+            mode: 0,
+        })
     }
     fn sync(&mut self) -> Result<(), ()> {
         if self.disk_inode.dirty() {
@@ -142,6 +154,9 @@ impl vfs::INode for INode {
             self.disk_inode.sync();
         }
         Ok(())
+    }
+    fn type_(&self) -> Result<u32, ()> {
+        Ok(self.disk_inode.type_.clone() as u32)
     }
 }
 
@@ -166,9 +181,9 @@ impl Iterator for BlockIter {
         }
         let block = self.begin / BLKSIZE;
         let begin = self.begin % BLKSIZE;
-        let end = if block == self.end / BLKSIZE {self.end % BLKSIZE} else {BLKSIZE};
+        let end = if block == self.end / BLKSIZE { self.end % BLKSIZE } else { BLKSIZE };
         self.begin += end - begin;
-        Some(BlockRange {block, begin, end})
+        Some(BlockRange { block, begin, end })
     }
 }
 
@@ -180,16 +195,16 @@ pub struct SimpleFileSystem {
     /// blocks in use are mared 0
     free_map: BitSet,
     /// inode list
-    inodes: BTreeMap<INodeId, Rc<INode>>,
+    inodes: BTreeMap<INodeId, Ptr<INode>>,
     /// device
     device: Box<Device>,
     /// Pointer to self, used by INodes
-    self_ptr: Weak<RefCell<SimpleFileSystem>>,
+    self_ptr: WeakPtr<SimpleFileSystem>,
 }
 
 impl SimpleFileSystem {
     /// Create a new SFS with device
-    pub fn new(mut device: Box<Device>) -> Option<Rc<RefCell<Self>>> {
+    pub fn new(mut device: Box<Device>) -> Option<Ptr<Self>> {
         let super_block = load_struct::<SuperBlock>(device.as_mut(), BLKN_SUPER);
         if super_block.check() == false {
             return None;
@@ -198,7 +213,7 @@ impl SimpleFileSystem {
         let mut fs = Rc::new(RefCell::new(SimpleFileSystem {
             super_block: Dirty::new(super_block),
             free_map: BitSet::new(),
-            inodes: BTreeMap::<INodeId, Rc<INode>>::new(),
+            inodes: BTreeMap::<INodeId, Ptr<INode>>::new(),
             device,
             self_ptr: Weak::default(),
         }));
@@ -223,17 +238,17 @@ impl SimpleFileSystem {
 
     /// Get inode by id. Load if not in memory.
     /// ** Must ensure it's a valid INode **
-    fn get_inode(&mut self, id: INodeId) -> Rc<INode> {
+    fn get_inode(&mut self, id: INodeId) -> Ptr<INode> {
         assert!(!self.free_map.contains(id));
 
         // Load if not in memory.
         if !self.inodes.contains_key(&id) {
             let disk_inode = load_struct::<DiskINode>(self.device.as_mut(), id);
-            let inode = Rc::new(INode {
+            let inode = Rc::new(RefCell::new(INode {
                 disk_inode: Dirty::new(disk_inode),
                 id,
                 fs: self.self_ptr.clone(),
-            });
+            }));
             self.inodes.insert(id, inode.clone());
             inode
         } else {
@@ -260,7 +275,7 @@ impl vfs::FileSystem for SimpleFileSystem {
         Ok(())
     }
 
-    fn root_inode(&mut self) -> Rc<INode> {
+    fn root_inode(&mut self) -> Ptr<INode> {
         self.get_inode(BLKN_ROOT)
     }
 
@@ -280,7 +295,7 @@ trait BitsetAlloc {
 impl BitsetAlloc for BitSet {
     fn alloc(&mut self) -> Option<usize> {
         // TODO: more efficient
-        let id = (0 .. self.len()).find(|&i| self.contains(i));
+        let id = (0..self.len()).find(|&i| self.contains(i));
         if let Some(id) = id {
             self.remove(id);
         }

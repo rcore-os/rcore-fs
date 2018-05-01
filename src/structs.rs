@@ -2,9 +2,11 @@
 
 use core::slice;
 use core::mem::size_of_val;
+use core::fmt::{Debug, Formatter, Error};
 
 /// On-disk superblock
 #[repr(C, packed)]
+#[derive(Debug)]
 pub struct SuperBlock {
     /// magic number, should be SFS_MAGIC
     pub magic: u32,
@@ -13,7 +15,7 @@ pub struct SuperBlock {
     /// number of unused blocks in fs
     pub unused_blocks: u32,
     /// information for sfs
-    pub info: [u8; MAX_INFO_LEN + 1],
+    pub info: Str32,
 }
 
 /// inode (on disk)
@@ -43,11 +45,32 @@ pub struct IndirectBlock {
 
 /// file entry (on disk)
 #[repr(C, packed)]
+#[derive(Debug)]
 pub struct DiskEntry {
     /// inode number
     pub id: u32,
     /// file name
-    pub name: [u8; MAX_FNAME_LEN + 1],
+    pub name: Str256,
+}
+
+#[repr(C)]
+pub struct Str256(pub [u8; 256]);
+#[repr(C)]
+pub struct Str32(pub [u8; 32]);
+
+impl Debug for Str256 {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        use alloc::String;
+        let len = self.0.iter().enumerate().find(|(i, &b)| b == 0).unwrap().0;
+        write!(f, "{}", String::from_utf8_lossy(&self.0[0 .. len]))
+    }
+}
+impl Debug for Str32 {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        use alloc::String;
+        let len = self.0.iter().enumerate().find(|(i, &b)| b == 0).unwrap().0;
+        write!(f, "{}", String::from_utf8_lossy(&self.0[0 .. len]))
+    }
 }
 
 impl SuperBlock {
@@ -68,6 +91,7 @@ pub trait AsBuf {
 
 impl AsBuf for SuperBlock {}
 impl AsBuf for DiskINode {}
+impl AsBuf for DiskEntry {}
 impl AsBuf for BlockId {}
 
 /*
@@ -104,7 +128,7 @@ pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
 
 /// file types
 #[repr(u16)]
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum FileType {
     Invalid = 0, File = 1, Dir = 2, Link = 3,
 }

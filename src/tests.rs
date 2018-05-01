@@ -28,6 +28,15 @@ fn test() {
         .expect("failed to open sfs.img");
     let sfs = SimpleFileSystem::new(Box::new(file))
         .expect("failed to create SFS");
-    let root = sfs.borrow_mut().root_inode();
+    let mut root = sfs.borrow_mut().root_inode();
     println!("{:?}", root);
+
+    use super::structs::{DiskEntry, AsBuf};
+    use super::vfs::INode;
+    use std::mem::uninitialized;
+    let mut entry: DiskEntry = unsafe{uninitialized()};
+    for i in 0 .. 23 {
+        root.borrow_mut().read_at(i * 4096, entry.as_buf_mut());
+        println!("{:?}", entry);
+    }
 }
