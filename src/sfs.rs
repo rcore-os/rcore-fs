@@ -62,7 +62,7 @@ impl Debug for INode {
 
 impl INode {
     /// Map file block id to disk block id
-    fn disk_block_id(&self, file_block_id: BlockId) -> Option<BlockId> {
+    fn get_disk_block_id(&self, file_block_id: BlockId) -> Option<BlockId> {
         match file_block_id {
             id if id >= self.disk_inode.blocks as BlockId =>
                 None,
@@ -77,6 +77,27 @@ impl INode {
                     disk_block_id.as_buf_mut(),
                 ).unwrap();
                 Some(disk_block_id as BlockId)
+            }
+            id => unimplemented!("double indirect blocks is not supported"),
+        }
+    }
+    fn set_disk_block_id(&mut self, file_block_id: BlockId, disk_block_id: BlockId) -> Result<(),()> {
+        match file_block_id {
+            id if id >= self.disk_inode.blocks as BlockId =>
+                Err(()),
+            id if id < NDIRECT => {
+                self.disk_inode.direct[id] = disk_block_id as u32;
+                Ok(())
+            },
+            id if id < NDIRECT + BLK_NENTRY => {
+                let disk_block_id = disk_block_id as u32;
+                let fs = self.fs.upgrade().unwrap();
+                fs.borrow_mut().device.write_block(
+                    self.disk_inode.indirect as usize,
+                    ENTRY_SIZE * (id - NDIRECT),
+                    disk_block_id.as_buf(),
+                ).unwrap();
+                Ok(())
             }
             id => unimplemented!("double indirect blocks is not supported"),
         }
@@ -102,7 +123,7 @@ impl vfs::INode for INode {
         // Read for each block
         let mut buf_offset = 0usize;
         for BlockRange { block, begin, end } in iter {
-            if let Some(disk_block_id) = self.disk_block_id(block) {
+            if let Some(disk_block_id) = self.get_disk_block_id(block) {
                 let len = end - begin;
                 fs.borrow_mut().device.read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]).unwrap();
                 buf_offset += len;
@@ -124,7 +145,7 @@ impl vfs::INode for INode {
         // Read for each block
         let mut buf_offset = 0usize;
         for BlockRange { block, begin, end } in iter {
-            if let Some(disk_block_id) = self.disk_block_id(block) {
+            if let Some(disk_block_id) = self.get_disk_block_id(block) {
                 let len = end - begin;
                 fs.borrow_mut().device.write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]).unwrap();
                 buf_offset += len;
@@ -155,6 +176,37 @@ impl vfs::INode for INode {
     }
     fn type_(&self) -> Result<u32, ()> {
         Ok(self.disk_inode.type_.clone() as u32)
+    }
+    fn resize(&mut self, len: usize) -> Result<(), ()> {
+        if self.disk_inode.type_ != FileType::File || len > MAX_FILE_SIZE {
+            return Err(());
+        }
+        let blocks = ((len + BLKSIZE - 1) / BLKSIZE) as u32;
+        use core::cmp::{Ord, Ordering};
+        match blocks.cmp(&self.disk_inode.blocks) {
+            Ordering::Equal => {},  // Do nothing
+            Ordering::Greater => {
+                let fs = self.fs.upgrade().unwrap();
+                let old_blocks = self.disk_inode.blocks;
+                self.disk_inode.blocks = blocks;
+                // allocate extra blocks
+                for i in old_blocks .. blocks {
+                    let disk_block_id = fs.borrow_mut().alloc_block().expect("no more space");
+                    self.set_disk_block_id(i as usize, disk_block_id).unwrap();
+                }
+            },
+            Ordering::Less => {
+                let fs = self.fs.upgrade().unwrap();
+                // free extra blocks
+                for i in blocks .. self.disk_inode.blocks {
+                    let disk_block_id = self.get_disk_block_id(i as usize).unwrap();
+                    fs.borrow_mut().free_block(disk_block_id);
+                }
+                self.disk_inode.blocks = blocks;
+            },
+        }
+        self.disk_inode.size = len as u32;
+        Ok(())
     }
 }
 

@@ -13,7 +13,7 @@ pub trait INode {
 //    fn reclaim(&mut self) -> Result<(), ()>;
     fn type_(&self) -> Result<u32, ()>;
 //    fn try_seek(&mut self, offset: u64) -> Result<(), ()>;
-//    fn truncate(&mut self, len: u64) -> Result<(), ()>;
+    fn resize(&mut self, len: usize) -> Result<(), ()>;
 //    fn create(&mut self, name: &'static str, excl: bool) -> Result<(), ()>;
 //    fn loopup(&mut self, path: &'static str) -> Result<(), ()>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<(), ()>;
