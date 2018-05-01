@@ -2,16 +2,19 @@ use std::fs::File;
 use std::io::{Read, Write, Seek, SeekFrom};
 use std::boxed::Box;
 use super::sfs::*;
+use super::vfs::*;
 
 impl Device for File {
-    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Option<usize> {
+    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
+        let offset = offset as u64;
         match self.seek(SeekFrom::Start(offset)) {
             Ok(real_offset) if real_offset == offset => self.read(buf).ok(),
             _ => None,
         }
     }
 
-    fn write_at(&mut self, offset: u64, buf: &[u8]) -> Option<usize> {
+    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
+        let offset = offset as u64;
         match self.seek(SeekFrom::Start(offset)) {
             Ok(real_offset) if real_offset == offset => self.write(buf).ok(),
             _ => None,
@@ -23,6 +26,7 @@ impl Device for File {
 fn test() {
     let file = File::open("sfs.img")
         .expect("failed to open sfs.img");
-    let sfs = SimpleFileSystem::new(Box::new(file))
+    let mut sfs = SimpleFileSystem::new(Box::new(file))
         .expect("failed to create SFS");
+//    let root = sfs.root_inode();
 }

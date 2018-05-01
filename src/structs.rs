@@ -12,7 +12,7 @@ pub struct SuperBlock {
     pub blocks: u32,
     /// number of unused blocks in fs
     pub unused_blocks: u32,
-    /// infomation for sfs
+    /// information for sfs
     pub info: [u8; MAX_INFO_LEN + 1],
 }
 
@@ -23,7 +23,7 @@ pub struct DiskINode {
     /// size of the file (in bytes)
     pub size: u32,
     /// one of SYS_TYPE_* above
-    pub type_: u16,
+    pub type_: FileType,
     /// number of hard links to this file
     pub nlinks: u16,
     /// number of blocks
@@ -34,6 +34,11 @@ pub struct DiskINode {
     pub indirect: u32,
     /// double indirect blocks
     pub db_indirect: u32,
+}
+
+#[repr(C, packed)]
+pub struct IndirectBlock {
+    pub entrys: [u32; BLK_NENTRY],
 }
 
 /// file entry (on disk)
@@ -63,11 +68,15 @@ pub trait AsBuf {
 
 impl AsBuf for SuperBlock {}
 impl AsBuf for DiskINode {}
+impl AsBuf for BlockId {}
 
 /*
  * Simple FS (SFS) definitions visible to ucore. This covers the on-disk format
  * and is used by tools that work on SFS volumes, such as mksfs.
  */
+pub type BlockId = usize;
+pub type INodeId = BlockId;
+
 /// magic number for sfs
 pub const MAGIC: u32 = 0x2f8dbe2a;
 /// size of block
@@ -81,17 +90,21 @@ pub const MAX_FNAME_LEN: usize = 255;
 /// max file size (128M)
 pub const MAX_FILE_SIZE: usize = 1024 * 1024 * 128;
 /// block the superblock lives in
-pub const BLKN_SUPER: usize = 0;
+pub const BLKN_SUPER: BlockId = 0;
 /// location of the root dir inode
-pub const BLKN_ROOT: usize = 1;
+pub const BLKN_ROOT: BlockId = 1;
 /// 1st block of the freemap
-pub const BLKN_FREEMAP: usize = 2;
+pub const BLKN_FREEMAP: BlockId = 2;
 /// number of bits in a block
 pub const BLKBITS: usize = BLKSIZE * 8;
+///
+pub const ENTRY_SIZE: usize = 4;
 /// number of entries in a block
-pub const BLK_NENTRY: usize = BLKSIZE / 4;
+pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
 
 /// file types
+#[repr(u16)]
+#[derive(Debug)]
 pub enum FileType {
     Invalid = 0, File = 1, Dir = 2, Link = 3,
 }
@@ -106,5 +119,6 @@ mod test {
         assert!(size_of::<SuperBlock>() <= BLKSIZE);
         assert!(size_of::<DiskINode>() <= BLKSIZE);
         assert!(size_of::<DiskEntry>() <= BLKSIZE);
+        assert_eq!(size_of::<IndirectBlock>(), BLKSIZE);
     }
 }
