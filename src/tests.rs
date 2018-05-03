@@ -35,7 +35,7 @@ fn _create_new_sfs() -> Rc<SimpleFileSystem> {
     let file = OpenOptions::new()
         .read(true).write(true).create(true).open("test.img")
         .expect("failed to create file");
-    SimpleFileSystem::create(Box::new(file), 16 * 4096)
+    SimpleFileSystem::create(Box::new(file), 32 * 4096)
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn print_root() {
 fn create_file() {
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
-    let file1 = root.borrow_mut().create("file1").unwrap();
+    let file1 = root.borrow_mut().create("file1", FileType::File).unwrap();
 
     assert_eq!(file1.borrow().info().unwrap(), FileInfo {
         size: 0,
@@ -82,10 +82,21 @@ fn create_file() {
 fn lookup() {
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
-    let file1 = root.borrow_mut().create("file1").unwrap();
-    let found = root.borrow().lookup("file1").expect("lookup not found");
-    println!("{:?}", found.borrow());
-    println!("{:?}", file1.borrow());
-    assert!(Rc::ptr_eq(&found, &file1), "found wrong INode");
+
+    assert!(Rc::ptr_eq(&root.borrow().lookup(".").unwrap(), &root), "failed to find .");
+    assert!(Rc::ptr_eq(&root.borrow().lookup("..").unwrap(), &root), "failed to find ..");
+
+    let file1 = root.borrow_mut().create("file1", FileType::File)
+        .expect("failed to create file1");
+    assert!(Rc::ptr_eq(&root.borrow().lookup("file1").unwrap(), &file1), "failed to find file1");
+    assert!(root.borrow().lookup("file2").is_err(), "found non-existent file");
+
+    let dir1 = root.borrow_mut().create("dir1", FileType::Dir)
+        .expect("failed to create dir1");
+    let file2 = dir1.borrow_mut().create("file2", FileType::File)
+        .expect("failed to create /dir1/file2");
+    assert!(Rc::ptr_eq(&root.borrow().lookup("dir1/file2").unwrap(), &file2), "failed to find dir1/file1");
+    assert!(Rc::ptr_eq(&dir1.borrow().lookup("..").unwrap(), &root), "failed to find .. from dir1");
+
     sfs.sync().unwrap();
 }

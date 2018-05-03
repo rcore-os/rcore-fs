@@ -120,12 +120,12 @@ impl INode {
         use vfs::INode;
         // Insert entries: '.' '..'
         self.resize(BLKSIZE * 2).unwrap();
-        self.write_at(0, DiskEntry {
+        self.write_at(BLKSIZE * 1, DiskEntry {
             id: parent as u32,
             name: Str256::from(".."),
         }.as_buf()).unwrap();
         let id = self.id as u32;
-        self.write_at(0, DiskEntry {
+        self.write_at(BLKSIZE * 0, DiskEntry {
             id,
             name: Str256::from("."),
         }.as_buf()).unwrap();
@@ -246,7 +246,7 @@ impl vfs::INode for INode {
         self.disk_inode.size = len as u32;
         Ok(())
     }
-    fn create(&mut self, name: &'static str) -> vfs::Result<Ptr<vfs::INode>> {
+    fn create(&mut self, name: &'static str, type_: vfs::FileType) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
@@ -256,7 +256,10 @@ impl vfs::INode for INode {
         assert!(self.get_file_inode_id(name).is_none(), "file name exist");
 
         // Create new INode
-        let inode = fs.new_inode_file().unwrap();
+        let inode = match type_ {
+            vfs::FileType::File => fs.new_inode_file().unwrap(),
+            vfs::FileType::Dir => fs.new_inode_dir(self.id).unwrap(),
+        };
 
         // Write new entry
         let entry = DiskEntry {
@@ -287,7 +290,7 @@ impl vfs::INode for INode {
         let type_ = inode.borrow().disk_inode.type_;
         match type_ {
             FileType::File => if rest_path == "" {Ok(inode)} else {Err(())},
-            FileType::Dir => inode.borrow_mut().lookup(rest_path),
+            FileType::Dir => if rest_path == "" {Ok(inode)} else {inode.borrow().lookup(rest_path)},
             _ => unimplemented!(),
         }
     }
@@ -424,6 +427,7 @@ impl SimpleFileSystem {
         }
         fs
     }
+
     /// Allocate a block, return block id
     fn alloc_block(&self) -> Option<usize> {
         let id = self.free_map.borrow_mut().alloc();
@@ -481,8 +485,6 @@ impl SimpleFileSystem {
 }
 
 impl vfs::FileSystem for SimpleFileSystem {
-    type INode = INode;
-
     /// Write back super block if dirty
     fn sync(&self) -> vfs::Result<()> {
         {
@@ -506,7 +508,7 @@ impl vfs::FileSystem for SimpleFileSystem {
         Ok(())
     }
 
-    fn root_inode(&self) -> Ptr<INode> {
+    fn root_inode(&self) -> Ptr<vfs::INode> {
         self.get_inode(BLKN_ROOT)
     }
 }

@@ -16,7 +16,7 @@ pub trait INode: Debug {
 //    fn reclaim(&mut self) -> Result<()>;
 //    fn try_seek(&mut self, offset: u64) -> Result<()>;
     fn resize(&mut self, len: usize) -> Result<()>;
-    fn create(&mut self, name: &'static str) -> Result<Rc<RefCell<INode>>>;
+    fn create(&mut self, name: &'static str, type_: FileType) -> Result<Rc<RefCell<INode>>>;
     fn lookup(&self, path: &'static str) -> Result<Rc<RefCell<INode>>>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
 }
@@ -37,9 +37,8 @@ pub type Result<T> = core::result::Result<T, ()>;
 
 /// ﻿Abstract filesystem
 pub trait FileSystem {
-    type INode: INode;
     fn sync(&self) -> Result<()>;
-    fn root_inode(&self) -> Rc<RefCell<Self::INode>>;
+    fn root_inode(&self) -> Rc<RefCell<INode>>;
 //    fn unmount(&self) -> Result<()>;
 //    fn cleanup(&self);
 }
