@@ -3,6 +3,7 @@
 use core::slice;
 use core::mem::size_of_val;
 use core::fmt::{Debug, Formatter, Error};
+use alloc::str;
 
 /// On-disk superblock
 #[repr(C, packed)]
@@ -58,24 +59,39 @@ pub struct Str256(pub [u8; 256]);
 #[repr(C)]
 pub struct Str32(pub [u8; 32]);
 
+impl AsRef<str> for Str256 {
+    fn as_ref(&self) -> &str {
+        let len = self.0.iter().enumerate().find(|(_, &b)| b == 0).unwrap().0;
+        str::from_utf8(&self.0[0..len]).unwrap()
+    }
+}
+impl AsRef<str> for Str32 {
+    fn as_ref(&self) -> &str {
+        let len = self.0.iter().enumerate().find(|(_, &b)| b == 0).unwrap().0;
+        str::from_utf8(&self.0[0..len]).unwrap()
+    }
+}
 impl Debug for Str256 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        use alloc::String;
-        let len = self.0.iter().enumerate().find(|(i, &b)| b == 0).unwrap().0;
-        write!(f, "{}", String::from_utf8_lossy(&self.0[0 .. len]))
+        write!(f, "{}", self.as_ref())
     }
 }
 impl Debug for Str32 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        use alloc::String;
-        let len = self.0.iter().enumerate().find(|(i, &b)| b == 0).unwrap().0;
-        write!(f, "{}", String::from_utf8_lossy(&self.0[0 .. len]))
+        write!(f, "{}", self.as_ref())
     }
 }
-impl Str32 {
-    pub fn from_slice(s: &[u8]) -> Self {
+impl From<&'static str> for Str256 {
+    fn from(s: &'static str) -> Self {
+        let mut ret = [0u8; 256];
+        ret[0..s.len()].copy_from_slice(s.as_ref());
+        Str256(ret)
+    }
+}
+impl From<&'static str> for Str32 {
+    fn from(s: &'static str) -> Self {
         let mut ret = [0u8; 32];
-        ret[0..s.len()].copy_from_slice(s);
+        ret[0..s.len()].copy_from_slice(s.as_ref());
         Str32(ret)
     }
 }
@@ -83,6 +99,31 @@ impl Str32 {
 impl SuperBlock {
     pub fn check(&self) -> bool {
         self.magic == MAGIC
+    }
+}
+
+impl DiskINode {
+    pub const fn new_file() -> Self {
+        DiskINode {
+            size: 0,
+            type_: FileType::File,
+            nlinks: 0,
+            blocks: 0,
+            direct: [0; NDIRECT],
+            indirect: 0,
+            db_indirect: 0,
+        }
+    }
+    pub const fn new_dir() -> Self {
+        DiskINode {
+            size: 0,
+            type_: FileType::Dir,
+            nlinks: 0,
+            blocks: 0,
+            direct: [0; NDIRECT],
+            indirect: 0,
+            db_indirect: 0,
+        }
     }
 }
 

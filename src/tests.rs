@@ -3,6 +3,7 @@ use std::io::{Read, Write, Seek, SeekFrom};
 use std::boxed::Box;
 use super::sfs::*;
 use super::vfs::*;
+use super::vfs::INode;
 
 impl Device for File {
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
@@ -32,11 +33,10 @@ fn test() {
     println!("{:?}", root);
 
     use super::structs::{DiskEntry, AsBuf};
-    use super::vfs::INode;
     use std::mem::uninitialized;
     let mut entry: DiskEntry = unsafe{uninitialized()};
     for i in 0 .. 23 {
-        root.borrow_mut().read_at(i * 4096, entry.as_buf_mut());
+        root.borrow_mut().read_at(i * 4096, entry.as_buf_mut()).unwrap();
         println!("{:?}", entry);
     }
 }
@@ -47,6 +47,7 @@ fn create() {
         .read(true).write(true).create(true).open("test.img")
         .expect("failed to create file");
     let sfs = SimpleFileSystem::create(Box::new(file), 16 * 4096);
-
-
+    let root = sfs.borrow_mut().root_inode();
+    let file1 = root.borrow_mut().create("file1").unwrap();
+    sfs.borrow_mut().sync().unwrap();
 }
