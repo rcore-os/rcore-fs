@@ -37,8 +37,8 @@ pub type Result<T> = core::result::Result<T, ()>;
 /// ﻿Abstract filesystem
 pub trait FileSystem {
     type INode: INode;
-    fn sync(&mut self) -> Result<()>;
-    fn root_inode(&mut self) -> Rc<RefCell<Self::INode>>;
-    fn unmount(&mut self) -> Result<()>;
-    fn cleanup(&mut self);
+    fn sync(&self) -> Result<()>;
+    fn root_inode(&self) -> Rc<RefCell<Self::INode>>;
+//    fn unmount(&self) -> Result<()>;
+//    fn cleanup(&self);
 }

@@ -29,7 +29,7 @@ fn test() {
         .expect("failed to open sfs.img");
     let sfs = SimpleFileSystem::open(Box::new(file))
         .expect("failed to create SFS");
-    let root = sfs.borrow_mut().root_inode();
+    let root = sfs.root_inode();
     println!("{:?}", root);
 
     use super::structs::{DiskEntry, AsBuf};
@@ -47,7 +47,7 @@ fn create() {
         .read(true).write(true).create(true).open("test.img")
         .expect("failed to create file");
     let sfs = SimpleFileSystem::create(Box::new(file), 16 * 4096);
-    let root = sfs.borrow_mut().root_inode();
+    let root = sfs.root_inode();
     let file1 = root.borrow_mut().create("file1").unwrap();
-    sfs.borrow_mut().sync().unwrap();
+    sfs.sync().unwrap();
 }
