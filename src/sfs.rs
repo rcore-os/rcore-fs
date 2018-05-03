@@ -44,7 +44,6 @@ trait DeviceExt: Device {
 impl DeviceExt for Device {}
 
 type Ptr<T> = Rc<RefCell<T>>;
-type WeakPtr<T> = Weak<RefCell<T>>;
 
 /// inode for sfs
 pub struct INode {
@@ -58,7 +57,7 @@ pub struct INode {
 
 impl Debug for INode {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{:?}", *self.disk_inode)
+        write!(f, "INode {{ id: {}, disk: {:?} }}", self.id, self.disk_inode)
     }
 }
 
@@ -105,7 +104,7 @@ impl INode {
         }
     }
     /// Only for Dir
-    fn get_file_inode_id(&mut self, name: &'static str) -> Option<INodeId> {
+    fn get_file_inode_id(&self, name: &'static str) -> Option<INodeId> {
         (0 .. self.disk_inode.blocks)
             .map(|i| {
                 use vfs::INode;
@@ -153,7 +152,7 @@ impl vfs::INode for INode {
     fn close(&mut self) -> vfs::Result<()> {
         self.sync()
     }
-    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
         let fs = self.fs.upgrade().unwrap();
 
         let iter = BlockIter {
@@ -171,7 +170,7 @@ impl vfs::INode for INode {
         }
         Ok(buf_offset)
     }
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
+    fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
         let fs = self.fs.upgrade().unwrap();
 
         let iter = BlockIter {
@@ -189,7 +188,7 @@ impl vfs::INode for INode {
         }
         Ok(buf_offset)
     }
-    fn info(&mut self) -> vfs::Result<vfs::FileInfo> {
+    fn info(&self) -> vfs::Result<vfs::FileInfo> {
         Ok(vfs::FileInfo {
             size: self.disk_inode.size as usize,
             mode: 0,
@@ -269,7 +268,7 @@ impl vfs::INode for INode {
 
         Ok(inode)
     }
-    fn loopup(&mut self, path: &'static str) -> vfs::Result<Ptr<vfs::INode>> {
+    fn lookup(&self, path: &'static str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
@@ -288,7 +287,7 @@ impl vfs::INode for INode {
         let type_ = inode.borrow().disk_inode.type_;
         match type_ {
             FileType::File => if rest_path == "" {Ok(inode)} else {Err(())},
-            FileType::Dir => inode.borrow_mut().loopup(rest_path),
+            FileType::Dir => inode.borrow_mut().lookup(rest_path),
             _ => unimplemented!(),
         }
     }
@@ -441,46 +440,43 @@ impl SimpleFileSystem {
         self.super_block.borrow_mut().unused_blocks += 1;
     }
 
+    /// Create a new INode struct, then insert it to self.inodes
+    /// Private used for load or create INode
+    fn _new_inode(&self, id: INodeId, disk_inode: Dirty<DiskINode>) -> Ptr<INode> {
+        let inode = Rc::new(RefCell::new(INode {
+            disk_inode,
+            id,
+            fs: self.self_ptr.clone(),
+        }));
+        self.inodes.borrow_mut().insert(id, inode.clone());
+        inode
+    }
     /// Get inode by id. Load if not in memory.
     /// ** Must ensure it's a valid INode **
     fn get_inode(&self, id: INodeId) -> Ptr<INode> {
         assert!(!self.free_map.borrow().contains(id));
 
-        let mut inodes = self.inodes.borrow_mut();
         // Load if not in memory.
-        if !inodes.contains_key(&id) {
-            let disk_inode = self.device.borrow_mut().load_struct::<DiskINode>(id);
-            let inode = Rc::new(RefCell::new(INode {
-                disk_inode: Dirty::new(disk_inode),
-                id,
-                fs: self.self_ptr.clone(),
-            }));
-            inodes.insert(id, inode.clone());
-            inode
+        if !self.inodes.borrow().contains_key(&id) {
+            let disk_inode = Dirty::new(self.device.borrow_mut().load_struct::<DiskINode>(id));
+            self._new_inode(id, disk_inode)
         } else {
-            inodes.get(&id).unwrap().clone()
+            self.inodes.borrow_mut().get(&id).unwrap().clone()
         }
     }
     /// Create a new INode file
     fn new_inode_file(&self) -> vfs::Result<Ptr<INode>> {
         let id = self.alloc_block().unwrap();
-        Ok(Rc::new(RefCell::new(INode {
-            disk_inode: Dirty::new_dirty(DiskINode::new_file()),
-            id,
-            fs: self.self_ptr.clone(),
-        })))
+        let disk_inode = Dirty::new_dirty(DiskINode::new_file());
+        Ok(self._new_inode(id, disk_inode))
     }
     /// Create a new INode dir
     fn new_inode_dir(&self, parent: INodeId) -> vfs::Result<Ptr<INode>> {
         let id = self.alloc_block().unwrap();
-        let mut inode = INode {
-            disk_inode: Dirty::new_dirty(DiskINode::new_dir()),
-            id,
-            fs: self.self_ptr.clone(),
-        };
-        inode.init_dir(parent).unwrap();
-
-        Ok(Rc::new(RefCell::new(inode)))
+        let disk_inode = Dirty::new_dirty(DiskINode::new_dir());
+        let inode = self._new_inode(id, disk_inode);
+        inode.borrow_mut().init_dir(parent).unwrap();
+        Ok(inode)
     }
 }
 

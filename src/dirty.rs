@@ -1,4 +1,5 @@
 use core::ops::{Deref, DerefMut};
+use core::fmt::{Debug, Formatter, Error};
 
 /// Dirty wraps a value of type T with functions similiar to that of a Read/Write
 /// lock but simply sets a dirty flag on write(), reset on read()
@@ -57,6 +58,13 @@ impl<T> Drop for Dirty<T> {
     /// Guard it is not dirty when dropping
     fn drop(&mut self) {
         assert!(!self.dirty, "data dirty when dropping");
+    }
+}
+
+impl<T: Debug> Debug for Dirty<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let tag = if self.dirty {"Dirty"} else {"Clean"};
+        write!(f, "[{}] {:?}", tag, self.value)
     }
 }
 
