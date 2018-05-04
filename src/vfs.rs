@@ -1,4 +1,4 @@
-use alloc::rc::{Rc, Weak};
+use alloc::{Vec, String, rc::{Rc, Weak}};
 use core::cell::RefCell;
 use core::mem::size_of;
 use core;
@@ -18,6 +18,7 @@ pub trait INode: Debug {
     fn resize(&mut self, len: usize) -> Result<()>;
     fn create(&mut self, name: &'static str, type_: FileType) -> Result<Rc<RefCell<INode>>>;
     fn lookup(&self, path: &'static str) -> Result<Rc<RefCell<INode>>>;
+    fn list(&self) -> Result<Vec<String>>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
 }
 

@@ -5,6 +5,8 @@ use super::sfs::*;
 use super::vfs::*;
 use super::vfs::INode;
 use std::rc::Rc;
+use std::mem::uninitialized;
+use super::structs::{DiskEntry, AsBuf};
 
 impl Device for File {
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
@@ -45,7 +47,7 @@ fn open_sample_file() {
 
 #[test]
 fn create_new_sfs() {
-    _create_new_sfs();
+    let sfs = _create_new_sfs();
 }
 
 #[test]
@@ -54,13 +56,8 @@ fn print_root() {
     let root = sfs.root_inode();
     println!("{:?}", root.borrow());
 
-    use super::structs::{DiskEntry, AsBuf};
-    use std::mem::uninitialized;
-    let mut entry: DiskEntry = unsafe{uninitialized()};
-    for i in 0 .. 23 {
-        root.borrow_mut().read_at(i * 4096, entry.as_buf_mut()).unwrap();
-        println!("{:?}", entry);
-    }
+    let files = root.borrow().list().unwrap();
+    println!("{:?}", files);
 }
 
 #[test]
@@ -79,7 +76,48 @@ fn create_file() {
 }
 
 #[test]
-fn lookup() {
+fn resize() {
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+    let file1 = root.borrow_mut().create("file1", FileType::File).unwrap();
+    assert_eq!(file1.borrow().info().unwrap().size, 0, "empty file size != 0");
+
+    const SIZE1: usize = 0x1234;
+    const SIZE2: usize = 0x1250;
+    file1.borrow_mut().resize(SIZE1).unwrap();
+    assert_eq!(file1.borrow().info().unwrap().size, SIZE1, "wrong size after resize");
+    let mut data1: [u8; SIZE2] = unsafe{uninitialized()};
+    impl AsBuf for [u8; SIZE2] {}
+    let len = file1.borrow().read_at(0, data1.as_buf_mut()).unwrap();
+    assert_eq!(len, SIZE1, "wrong size returned by read_at()");
+    assert_eq!(&data1[..SIZE1], &[0u8; SIZE1][..], "expanded data should be 0");
+
+    sfs.sync().unwrap();
+}
+
+// FIXME: `should_panic` tests will panic again on exit, due to `Dirty` drop
+
+//#[test]
+//#[should_panic]
+//fn resize_on_dir_should_panic() {
+//    let sfs = _create_new_sfs();
+//    let root = sfs.root_inode();
+//    root.borrow_mut().resize(4096).unwrap();
+//    sfs.sync().unwrap();
+//}
+//
+//#[test]
+//#[should_panic]
+//fn resize_too_large_should_panic() {
+//    let sfs = _create_new_sfs();
+//    let root = sfs.root_inode();
+//    let file1 = root.borrow_mut().create("file1", FileType::File).unwrap();
+//    file1.borrow_mut().resize(1 << 28).unwrap();
+//    sfs.sync().unwrap();
+//}
+
+#[test]
+fn create_then_lookup() {
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
 

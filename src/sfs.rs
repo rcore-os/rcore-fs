@@ -1,6 +1,6 @@
 use spin::Mutex;
 use bit_set::BitSet;
-use alloc::{boxed::Box, Vec, BTreeMap, rc::{Rc, Weak}};
+use alloc::{boxed::Box, Vec, BTreeMap, rc::{Rc, Weak}, String};
 use core::cell::{RefCell, RefMut};
 use dirty::Dirty;
 use super::structs::*;
@@ -14,9 +14,9 @@ use core::fmt::{Debug, Formatter, Error};
 pub trait Device {
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
     fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
+}
 
-    // Helper functions
-
+trait DeviceExt: Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.read_at(id * BLKSIZE + offset, buf) {
@@ -31,9 +31,6 @@ pub trait Device {
             _ => Err(()),
         }
     }
-}
-
-trait DeviceExt: Device {
     /// Load struct `T` from given block in device
     fn load_struct<T: AsBuf>(&mut self, id: BlockId) -> T {
         let mut s: T = unsafe { uninitialized() };
@@ -79,7 +76,7 @@ impl INode {
                 ).unwrap();
                 Some(disk_block_id as BlockId)
             }
-            id => unimplemented!("double indirect blocks is not supported"),
+            _ => unimplemented!("double indirect blocks is not supported"),
         }
     }
     fn set_disk_block_id(&mut self, file_block_id: BlockId, disk_block_id: BlockId) -> vfs::Result<()> {
@@ -89,7 +86,7 @@ impl INode {
             id if id < NDIRECT => {
                 self.disk_inode.direct[id] = disk_block_id as u32;
                 Ok(())
-            },
+            }
             id if id < NDIRECT + BLK_NENTRY => {
                 let disk_block_id = disk_block_id as u32;
                 let fs = self.fs.upgrade().unwrap();
@@ -100,16 +97,16 @@ impl INode {
                 ).unwrap();
                 Ok(())
             }
-            id => unimplemented!("double indirect blocks is not supported"),
+            _ => unimplemented!("double indirect blocks is not supported"),
         }
     }
     /// Only for Dir
     fn get_file_inode_id(&self, name: &'static str) -> Option<INodeId> {
-        (0 .. self.disk_inode.blocks)
+        (0..self.disk_inode.blocks)
             .map(|i| {
                 use vfs::INode;
-                let mut entry: DiskEntry = unsafe {uninitialized()};
-                self.read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
+                let mut entry: DiskEntry = unsafe { uninitialized() };
+                self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
                 entry
             })
             .find(|entry| entry.name.as_ref() == name)
@@ -119,27 +116,104 @@ impl INode {
     fn init_dir(&mut self, parent: INodeId) -> vfs::Result<()> {
         use vfs::INode;
         // Insert entries: '.' '..'
-        self.resize(BLKSIZE * 2).unwrap();
-        self.write_at(BLKSIZE * 1, DiskEntry {
+        self._resize(BLKSIZE * 2).unwrap();
+        self._write_at(BLKSIZE * 1, DiskEntry {
             id: parent as u32,
             name: Str256::from(".."),
         }.as_buf()).unwrap();
         let id = self.id as u32;
-        self.write_at(BLKSIZE * 0, DiskEntry {
+        self._write_at(BLKSIZE * 0, DiskEntry {
             id,
             name: Str256::from("."),
         }.as_buf()).unwrap();
         Ok(())
     }
-    fn clean_at(&mut self, begin: usize, end: usize) -> vfs::Result<()> {
+    /// Resize content size, no matter what type it is.
+    fn _resize(&mut self, len: usize) -> vfs::Result<()> {
+        assert!(len <= MAX_FILE_SIZE, "file size exceed limit");
+        let blocks = ((len + BLKSIZE - 1) / BLKSIZE) as u32;
+        use core::cmp::{Ord, Ordering};
+        match blocks.cmp(&self.disk_inode.blocks) {
+            Ordering::Equal => {}  // Do nothing
+            Ordering::Greater => {
+                let fs = self.fs.upgrade().unwrap();
+                let old_blocks = self.disk_inode.blocks;
+                self.disk_inode.blocks = blocks;
+                // allocate indirect block if need
+                if old_blocks < NDIRECT as u32 && blocks >= NDIRECT as u32 {
+                    self.disk_inode.indirect = fs.alloc_block().unwrap() as u32;
+                }
+                // allocate extra blocks
+                for i in old_blocks..blocks {
+                    let disk_block_id = fs.alloc_block().expect("no more space");
+                    self.set_disk_block_id(i as usize, disk_block_id).unwrap();
+                }
+                // clean up
+                let old_size = self.disk_inode.size as usize;
+                self.disk_inode.size = len as u32;
+                self._clean_at(old_size, len).unwrap();
+            }
+            Ordering::Less => {
+                let fs = self.fs.upgrade().unwrap();
+                // free extra blocks
+                for i in blocks..self.disk_inode.blocks {
+                    let disk_block_id = self.get_disk_block_id(i as usize).unwrap();
+                    fs.free_block(disk_block_id);
+                }
+                // free indirect block if need
+                if blocks < NDIRECT as u32 && self.disk_inode.blocks >= NDIRECT as u32 {
+                    fs.free_block(self.disk_inode.indirect as usize);
+                    self.disk_inode.indirect = 0;
+                }
+                self.disk_inode.blocks = blocks;
+            }
+        }
+        self.disk_inode.size = len as u32;
+        Ok(())
+    }
+    /// Read/Write content, no matter what type it is
+    fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
+        where F: FnMut(RefMut<Box<Device>>, &BlockRange, usize)
+    {
         let fs = self.fs.upgrade().unwrap();
 
-        let iter = BlockIter { begin, end };
-        for BlockRange { block, begin, end } in iter {
-            static ZEROS: [u8; BLKSIZE] = [0; BLKSIZE];
-            let disk_block_id = self.get_disk_block_id(block).unwrap();
-            fs.device.borrow_mut().write_block(disk_block_id, begin, &ZEROS[begin..end]).unwrap();
+        let size = match self.disk_inode.type_ {
+            FileType::Dir => self.disk_inode.blocks as usize * BLKSIZE,
+            FileType::File => self.disk_inode.size as usize,
+            _ => unimplemented!(),
+        };
+        let iter = BlockIter {
+            begin: size.min(begin),
+            end: size.min(end),
+        };
+
+        // For each block
+        let mut buf_offset = 0usize;
+        for mut range in iter {
+            range.block = self.get_disk_block_id(range.block).unwrap();
+            f(fs.device.borrow_mut(), &range, buf_offset);
+            buf_offset += range.len();
         }
+        Ok(buf_offset)
+    }
+    /// Read content, no matter what type it is
+    fn _read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
+        self._io_at(offset, offset + buf.len(), |mut device, range, offset| {
+            device.read_block(range.block, range.begin, &mut buf[offset..offset + range.len()]).unwrap()
+        })
+    }
+    /// Write content, no matter what type it is
+    fn _write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
+        self._io_at(offset, offset + buf.len(), |mut device, range, offset| {
+            device.write_block(range.block, range.begin, &buf[offset..offset + range.len()]).unwrap()
+        })
+    }
+    /// Clean content, no matter what type it is
+    fn _clean_at(&self, begin: usize, end: usize) -> vfs::Result<()> {
+        static ZEROS: [u8; BLKSIZE] = [0; BLKSIZE];
+        self._io_at(begin, end, |mut device, range, _| {
+            device.write_block(range.block, range.begin, &ZEROS[..range.len()]).unwrap()
+        }).unwrap();
         Ok(())
     }
 }
@@ -153,40 +227,12 @@ impl vfs::INode for INode {
         self.sync()
     }
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        let fs = self.fs.upgrade().unwrap();
-
-        let iter = BlockIter {
-            begin: offset,
-            end: offset + buf.len(),
-        };
-
-        // Read for each block
-        let mut buf_offset = 0usize;
-        for BlockRange { block, begin, end } in iter {
-            let disk_block_id = self.get_disk_block_id(block).unwrap();
-            let len = end - begin;
-            fs.device.borrow_mut().read_block(disk_block_id, begin, &mut buf[buf_offset..buf_offset + len]).unwrap();
-            buf_offset += len;
-        }
-        Ok(buf_offset)
+        assert_eq!(self.disk_inode.type_, FileType::File, "read_at is only available on file");
+        self._read_at(offset, buf)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        let fs = self.fs.upgrade().unwrap();
-
-        let iter = BlockIter {
-            begin: offset,
-            end: offset + buf.len(),
-        };
-
-        // Write for each block
-        let mut buf_offset = 0usize;
-        for BlockRange { block, begin, end } in iter {
-            let disk_block_id = self.get_disk_block_id(block).unwrap();
-            let len = end - begin;
-            fs.device.borrow_mut().write_block(disk_block_id, begin, &buf[buf_offset..buf_offset + len]).unwrap();
-            buf_offset += len;
-        }
-        Ok(buf_offset)
+        assert_eq!(self.disk_inode.type_, FileType::File, "write_at is only available on file");
+        self._write_at(offset, buf)
     }
     fn info(&self) -> vfs::Result<vfs::FileInfo> {
         Ok(vfs::FileInfo {
@@ -204,53 +250,13 @@ impl vfs::INode for INode {
         Ok(())
     }
     fn resize(&mut self, len: usize) -> vfs::Result<()> {
-        if len > MAX_FILE_SIZE {
-            return Err(());
-        }
-        let blocks = ((len + BLKSIZE - 1) / BLKSIZE) as u32;
-        use core::cmp::{Ord, Ordering};
-        match blocks.cmp(&self.disk_inode.blocks) {
-            Ordering::Equal => {},  // Do nothing
-            Ordering::Greater => {
-                let fs = self.fs.upgrade().unwrap();
-                let old_blocks = self.disk_inode.blocks;
-                self.disk_inode.blocks = blocks;
-                // allocate indirect block if need
-                if old_blocks < NDIRECT as u32 && blocks >= NDIRECT as u32 {
-                    self.disk_inode.indirect = fs.alloc_block().unwrap() as u32;
-                }
-                // allocate extra blocks
-                for i in old_blocks .. blocks {
-                    let disk_block_id = fs.alloc_block().expect("no more space");
-                    self.set_disk_block_id(i as usize, disk_block_id).unwrap();
-                }
-                // clean up
-                let old_size = self.disk_inode.size as usize;
-                self.clean_at(old_size, len).unwrap();
-            },
-            Ordering::Less => {
-                let fs = self.fs.upgrade().unwrap();
-                // free extra blocks
-                for i in blocks .. self.disk_inode.blocks {
-                    let disk_block_id = self.get_disk_block_id(i as usize).unwrap();
-                    fs.free_block(disk_block_id);
-                }
-                // free indirect block if need
-                if blocks < NDIRECT as u32 && self.disk_inode.blocks >= NDIRECT as u32 {
-                    fs.free_block(self.disk_inode.indirect as usize);
-                    self.disk_inode.indirect = 0;
-                }
-                self.disk_inode.blocks = blocks;
-            },
-        }
-        self.disk_inode.size = len as u32;
-        Ok(())
+        assert_eq!(self.disk_inode.type_, FileType::File, "resize is only available on file");
+        self._resize(len)
     }
     fn create(&mut self, name: &'static str, type_: vfs::FileType) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
-        assert_eq!(info.size % BLKSIZE, 0);
 
         // Ensure the name is not exist
         assert!(self.get_file_inode_id(name).is_none(), "file name exist");
@@ -266,8 +272,8 @@ impl vfs::INode for INode {
             id: inode.borrow().id as u32,
             name: Str256::from(name),
         };
-        self.resize(info.size + BLKSIZE).unwrap();
-        self.write_at(info.size, entry.as_buf()).unwrap();
+        self._resize(info.size + BLKSIZE).unwrap();
+        self._write_at(info.size, entry.as_buf()).unwrap();
 
         Ok(inode)
     }
@@ -275,11 +281,10 @@ impl vfs::INode for INode {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
-        assert_eq!(info.size % BLKSIZE, 0);
 
         let (name, rest_path) = match path.find('/') {
             None => (path, ""),
-            Some(pos) => (&path[0..pos], &path[pos+1..]),
+            Some(pos) => (&path[0..pos], &path[pos + 1..]),
         };
         let inode_id = self.get_file_inode_id(name);
         if inode_id.is_none() {
@@ -289,10 +294,21 @@ impl vfs::INode for INode {
 
         let type_ = inode.borrow().disk_inode.type_;
         match type_ {
-            FileType::File => if rest_path == "" {Ok(inode)} else {Err(())},
-            FileType::Dir => if rest_path == "" {Ok(inode)} else {inode.borrow().lookup(rest_path)},
+            FileType::File => if rest_path == "" { Ok(inode) } else { Err(()) },
+            FileType::Dir => if rest_path == "" { Ok(inode) } else { inode.borrow().lookup(rest_path) },
             _ => unimplemented!(),
         }
+    }
+    fn list(&self) -> vfs::Result<Vec<String>> {
+        assert_eq!(self.disk_inode.type_, FileType::Dir);
+
+        Ok((0..self.disk_inode.blocks)
+            .map(|i| {
+                use vfs::INode;
+                let mut entry: DiskEntry = unsafe { uninitialized() };
+                self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
+                String::from(entry.name.as_ref())
+            }).collect())
     }
 }
 
@@ -310,11 +326,17 @@ struct BlockIter {
     end: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 struct BlockRange {
     block: BlockId,
     begin: usize,
     end: usize,
+}
+
+impl BlockRange {
+    fn len(&self) -> usize {
+        self.end - self.begin
+    }
 }
 
 impl Iterator for BlockIter {
@@ -382,7 +404,7 @@ impl SimpleFileSystem {
         };
         let free_map = {
             let mut bitset = BitSet::with_capacity(BLKBITS);
-            for i in 3 .. blocks {
+            for i in 3..blocks {
                 bitset.insert(i);
             }
             bitset
@@ -418,7 +440,7 @@ impl SimpleFileSystem {
         // It's a little tricky.
         let mut fs = Rc::new(self);
         // Force create a reference to make Weak
-        let fs1 = unsafe{ &*(&fs as *const Rc<SimpleFileSystem>) };
+        let fs1 = unsafe { &*(&fs as *const Rc<SimpleFileSystem>) };
         {
             // `Rc::get_mut` is allowed when there is only one strong reference
             // So the following 2 lines can not be joint.
@@ -539,11 +561,11 @@ impl BitsetAlloc for BitSet {
 impl AsBuf for BitSet {
     fn as_buf(&self) -> &[u8] {
         let slice = self.get_ref().storage();
-        unsafe{ slice::from_raw_parts(slice as *const _ as *const u8, slice.len() * 4) }
+        unsafe { slice::from_raw_parts(slice as *const _ as *const u8, slice.len() * 4) }
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
         let slice = self.get_ref().storage();
-        unsafe{ slice::from_raw_parts_mut(slice as *const _ as *mut u8, slice.len() * 4) }
+        unsafe { slice::from_raw_parts_mut(slice as *const _ as *mut u8, slice.len() * 4) }
     }
 }
 
@@ -562,4 +584,13 @@ impl From<FileType> for vfs::FileType {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn block_iter() {
+        let mut iter = BlockIter { begin: 0x123, end: 0x2018 };
+        assert_eq!(iter.next(), Some(BlockRange { block: 0, begin: 0x123, end: 0x1000 }));
+        assert_eq!(iter.next(), Some(BlockRange { block: 1, begin: 0, end: 0x1000 }));
+        assert_eq!(iter.next(), Some(BlockRange { block: 2, begin: 0, end: 0x18 }));
+        assert_eq!(iter.next(), None);
+    }
 }

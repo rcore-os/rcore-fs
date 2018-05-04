@@ -24,6 +24,7 @@ pub struct SuperBlock {
 #[derive(Debug)]
 pub struct DiskINode {
     /// size of the file (in bytes)
+    /// undefined in dir (256 * #entries ?)
     pub size: u32,
     /// one of SYS_TYPE_* above
     pub type_: FileType,
