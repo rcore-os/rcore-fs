@@ -6,3 +6,6 @@ authors = ["WangRunji <wangrunji0408@163.com>"]
 [dependencies]
 spin = "0.4"
 bit-set = "0.5"
+
+[features]
+ucore = []
