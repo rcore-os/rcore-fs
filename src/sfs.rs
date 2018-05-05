@@ -239,6 +239,7 @@ impl vfs::INode for INode {
             size: self.disk_inode.size as usize,
             mode: 0,
             type_: vfs::FileType::from(self.disk_inode.type_.clone()),
+            blocks: self.disk_inode.blocks as usize,
         })
     }
     fn sync(&mut self) -> vfs::Result<()> {

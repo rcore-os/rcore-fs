@@ -70,6 +70,7 @@ fn create_file() {
         size: 0,
         type_: FileType::File,
         mode: 0,
+        blocks: 0,
     });
 
     sfs.sync().unwrap();

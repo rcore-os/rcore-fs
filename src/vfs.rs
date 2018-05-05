@@ -27,6 +27,7 @@ pub struct FileInfo {
     pub size: usize,
     pub mode: u32,
     pub type_: FileType,
+    pub blocks: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]

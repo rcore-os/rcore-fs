@@ -1,6 +1,6 @@
 #![feature(alloc)]
 #![feature(const_fn)]
-#![cfg_attr(feature = "ucore", feature(allocator_api, global_allocator))]
+#![cfg_attr(feature = "ucore", feature(allocator_api, global_allocator, lang_items))]
 #![no_std]
 
 #[cfg(test)]

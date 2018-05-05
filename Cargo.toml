@@ -3,9 +3,15 @@ name = "simple-filesystem"
 version = "0.0.1"
 authors = ["WangRunji <wangrunji0408@163.com>"]
 
+[lib]
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = 'abort' # prevent `_Unwind_Resume` link error
+
 [dependencies]
 spin = "0.4"
-bit-set = "0.5"
+bit-set = { default-features = false, version = "0.5" } # default-features contains 'std'
 
 [features]
 ucore = []
