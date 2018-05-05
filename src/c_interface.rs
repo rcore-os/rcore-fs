@@ -19,10 +19,10 @@ mod lang {
     #[lang = "panic_fmt"]
     #[no_mangle]
     extern fn panic_fmt(fmt: core::fmt::Arguments, file: &'static str, line: u32) -> ! {
-        eprintln!("\n\nPANIC in {} at line {}:", file, line);
-        eprintln!("    {}", fmt);
         use super::ucore::__panic;
-        unsafe{ __panic() };
+        // FIXME: can not use `format`, will cause page fault
+        // let mut s = fmt::format(fmt);
+        unsafe{ __panic(file.as_ptr(), line as i32, "Rust panic\0".as_ptr()) };
         unreachable!()
     }
 }
@@ -35,9 +35,15 @@ mod ucore {
         pub fn inode_init(inode: &mut INode, ops: &INodeOps, fs: &mut Fs);
         pub fn inode_kill(inode: &mut INode);
         pub fn __alloc_fs(type_: i32) -> *mut Fs;
-        pub fn __panic();
+        pub fn __panic(file: *const u8, line: i32, fmt: *const u8);
+        fn cputchar(c: i32);
     }
     pub const SFS_TYPE: i32 = 0; // TODO
+    pub fn print(s: &str) {
+        for c in s.chars() {
+            unsafe{ cputchar(c as i32);}
+        }
+    }
 }
 
 // Exports for ucore
@@ -48,6 +54,7 @@ static SFS_INODE_OPS: INodeOps = INodeOps::from_rust_inode::<sfs::INode>();
 #[no_mangle]
 pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCode {
     use self::ucore::*;
+    panic!("sfs_do_mount");
     let fs = unsafe{__alloc_fs(SFS_TYPE)};
     let device = unsafe{ Box::from_raw(dev) };  // TODO: fix unsafe
     unsafe{&mut (*fs)}.fs = sfs::SimpleFileSystem::open(device).unwrap();
@@ -311,21 +318,23 @@ mod allocator {
     use alloc::heap::{Alloc, AllocErr, Layout};
     use core::ptr::NonNull;
 
-    pub struct UcoreAllocator {
-        pub malloc: unsafe extern fn(size: usize) -> *mut u8,
-        pub free: unsafe extern fn(*mut u8),
+    extern {
+        fn kmalloc(size: usize) -> *mut u8;
+        fn kfree(ptr: *mut u8);
     }
+
+    pub struct UcoreAllocator;
 
     unsafe impl<'a> Alloc for &'a UcoreAllocator {
         unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
             const NULL: *mut u8 = 0 as *mut u8;
-            match (self.malloc)(layout.size()) {
+            match kmalloc(layout.size()) {
                 NULL => Err(AllocErr::Exhausted { request: layout }),
                 ptr => Ok(ptr),
             }
         }
         unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
-            (self.free)(ptr);
+            kfree(ptr);
         }
     }
 }

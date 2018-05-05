@@ -7,6 +7,7 @@
 #[macro_use]
 extern crate std;
 extern crate spin;
+#[macro_use]
 extern crate alloc;
 extern crate bit_set;
 
@@ -15,6 +16,12 @@ macro_rules! eprintln {
     () => ();
     ($fmt:expr) => ();
     ($fmt:expr, $($arg:tt)*) => ();
+}
+#[cfg(feature = "ucore")]
+macro_rules! eprintln {
+    () => (::c_interface::ucore::print("\n"));
+    ($fmt:expr) => (::c_interface::ucore::print($fmt); ::c_interface::ucore::print("\n"););
+//    ($fmt:expr, $($arg:tt)*) => ();
 }
 
 mod dirty;
@@ -28,10 +35,4 @@ mod tests;
 
 #[cfg(feature = "ucore")]
 #[global_allocator]
-pub static UCORE_ALLOCATOR: c_interface::UcoreAllocator = {
-    extern {
-        fn kmalloc(size: usize) -> *mut u8;
-        fn kfree(ptr: *mut u8);
-    }
-    c_interface::UcoreAllocator{malloc: kmalloc, free: kfree}
-};
+pub static UCORE_ALLOCATOR: c_interface::UcoreAllocator = c_interface::UcoreAllocator{};
