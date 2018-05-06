@@ -429,16 +429,11 @@ impl SimpleFileSystem {
     fn wrap(self) -> Rc<Self> {
         // Create a Rc, make a Weak from it, then put it into the struct.
         // It's a little tricky.
-        let mut fs = Rc::new(self);
-        // Force create a reference to make Weak
-        let fs1 = unsafe { &*(&fs as *const Rc<SimpleFileSystem>) };
-        {
-            // `Rc::get_mut` is allowed when there is only one strong reference
-            // So the following 2 lines can not be joint.
-            let fs0 = Rc::get_mut(&mut fs).unwrap();
-            fs0.self_ptr = Rc::downgrade(&fs1);
-        }
-        fs
+        let fs = Rc::new(self);
+        let weak = Rc::downgrade(&fs);
+        let ptr = Rc::into_raw(fs) as *mut Self;
+        unsafe{ (*ptr).self_ptr = weak; }
+        unsafe{ Rc::from_raw(ptr) }
     }
 
     /// Allocate a block, return block id
