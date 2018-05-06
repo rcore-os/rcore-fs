@@ -139,3 +139,14 @@ fn create_then_lookup() {
 
     sfs.sync().unwrap();
 }
+
+#[test]
+fn rc_layout() {
+    // [usize, usize, T]
+    //  ^ start       ^ Rc::into_raw
+    let p = Rc::new([2u8; 5]);
+    let ptr = Rc::into_raw(p);
+    let start = unsafe{ (ptr as *const usize).offset(-2) };
+    let ns = unsafe{ &*(start as *const [usize; 2]) };
+    assert_eq!(ns, &[1usize, 1]);
+}

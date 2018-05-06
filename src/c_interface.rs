@@ -1,11 +1,13 @@
 //! C Interfaces for ucore
 
-use alloc::{rc::Rc, boxed::Box};
+use alloc::{rc::Rc, boxed::Box, BTreeMap};
 use core::cell::RefCell;
 use core::slice;
-
-/// Global allocator defined in root
-pub use self::allocator::UcoreAllocator;
+use core::ops::Deref;
+use core::cmp::Ordering;
+use alloc::heap::{Alloc, AllocErr, Layout};
+use core::mem::size_of;
+use vfs;
 
 /// Lang items for bare lib
 mod lang {
@@ -31,6 +33,8 @@ mod lang {
 mod ucore {
     use super::*;
     extern {
+        pub fn kmalloc(size: usize) -> *mut u8;
+        pub fn kfree(ptr: *mut u8);
         pub fn inode_kill(inode: &mut INode);
         pub fn create_inode_for_sfs(ops: &INodeOps, fs: &mut Fs) -> *mut INode;
         pub fn create_fs_for_sfs(ops: &FsOps) -> *mut Fs;
@@ -46,13 +50,10 @@ macro_rules! cprintf {
 
 // Exports for ucore
 
-static SFS_INODE_OPS: INodeOps = INodeOps::from_rust_inode::<sfs::INode>();
-static SFS_FS_OPS: FsOps = FsOps::from_rust_fs::<sfs::SimpleFileSystem>();
-
 #[no_mangle]
 pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCode {
-    use self::ucore::*;
-    let fs = unsafe{create_fs_for_sfs(&SFS_FS_OPS)};
+    use sfs;
+    let fs = unsafe{ ucore::create_fs_for_sfs(&FS_OPS) };
     debug_assert!(!dev.is_null());
     let mut device = unsafe{ Box::from_raw(dev) };  // TODO: fix unsafe
     device.open();
@@ -68,7 +69,7 @@ pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCod
 /// Match struct `inode` in ucore `kern/fs/vfs/inode.h`
 #[repr(C)]
 struct INode {
-    inode: Rc<RefCell<vfs::INode>>,
+    inode: vfs::INodePtr,
     // ... fields handled extern
 }
 
@@ -249,9 +250,6 @@ pub enum ErrorCode {
 
 // Wrapper functions
 
-use vfs;
-use sfs;
-
 impl AsRef<[u8]> for IoBuf {
     fn as_ref(&self) -> &[u8] {
         unsafe{ slice::from_raw_parts(self.base, self.resident as usize) }
@@ -332,15 +330,28 @@ impl Device {
 }
 
 impl INode {
-    fn new(fs: &mut Fs) -> &mut Self {
-        use self::ucore::*;
-        let inode = unsafe{ create_inode_for_sfs(&SFS_INODE_OPS, fs) };
-        assert!(!inode.is_null());
-        unsafe{ &mut *inode }
+    fn get_or_create(vfs_inode: vfs::INodePtr, fs: &mut Fs) -> *mut Self {
+        static mut MAPPER: *mut BTreeMap<usize, *mut INode> = 0 as *mut _;
+
+        unsafe {if MAPPER.is_null() {
+            MAPPER = Box::into_raw(Box::new(BTreeMap::<usize, *mut INode>::new()));
+        } }
+
+        let mapper = unsafe{ &mut *MAPPER };
+
+        let addr = vfs_inode.as_ptr() as *const () as usize;
+        match mapper.get(&addr) {
+            Some(&ptr) => ptr,
+            None => {
+                let inode = unsafe{ ucore::create_inode_for_sfs(&INODE_OPS, fs) };
+                assert!(!inode.is_null());
+                mapper.insert(addr, inode);
+                inode
+            },
+        }
     }
     fn drop(&mut self) {
-        use self::ucore::*;
-        unsafe{ inode_kill(self) };
+        unsafe{ ucore::inode_kill(self) };
     }
 }
 
@@ -355,114 +366,116 @@ impl From<vfs::FileInfo> for Stat {
     }
 }
 
-impl INodeOps {
-    const fn from_rust_inode<T: vfs::INode>() -> Self {
-        extern fn open(inode: &mut INode, flags: u32) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn close(inode: &mut INode) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn read(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
-            let inode = &inode.inode;
-            let len = inode.borrow().read_at(buf.offset as usize, buf.as_mut()).unwrap();
-            buf.skip(len);
-            ErrorCode::Ok
-        }
-        extern fn write(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
-            let inode = &inode.inode;
-            let len = inode.borrow().write_at(buf.offset as usize, buf.as_ref()).unwrap();
-            buf.skip(len);
-            ErrorCode::Ok
-        }
-        extern fn fstat(inode: &mut INode, stat: &mut Stat) -> ErrorCode {
-            let inode = &inode.inode;
-            let info = inode.borrow().info().unwrap();
-            *stat = Stat::from(info);
-            ErrorCode::Ok
-        }
-        extern fn fsync(inode: &mut INode) -> ErrorCode {
-            inode.inode.borrow_mut().sync().unwrap();
-            ErrorCode::Ok
-        }
-        extern fn namefile(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn getdirentry(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn reclaim(inode: &mut INode) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn gettype(inode: &mut INode, type_store: &mut u32) -> ErrorCode {
-            let inode = &inode.inode;
-            let info = inode.borrow().info().unwrap();
-            *type_store = info.type_ as u32;
-            ErrorCode::Ok
-        }
-        extern fn tryseek(inode: &mut INode, pos: i32) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn truncate(inode: &mut INode, len: i32) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn create(inode: &mut INode, name: *const u8, excl: bool, inode_store: &mut &mut INode) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn lookup(inode: &mut INode, path: &mut u8, inode_store: &mut &mut INode) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        extern fn ioctl(inode: &mut INode, op: i32, data: &mut u8) -> ErrorCode {
-            ErrorCode::Unimplemented
-        }
-        INodeOps {
-            magic: 0x8c4ba476,
-            open, close, read, write, fstat, fsync, namefile, getdirentry,
-            reclaim, gettype, tryseek, truncate, create, lookup, ioctl,
+static INODE_OPS: INodeOps = {
+    impl Deref for INode {
+        type Target = vfs::INodePtr;
+
+        fn deref(&self) -> &Self::Target {
+            &self.inode
         }
     }
-}
 
-impl FsOps {
-    const fn from_rust_fs<T: vfs::FileSystem>() -> Self {
-        extern fn sync(fs: &mut Fs) -> ErrorCode {
-            fs.fs.sync().unwrap();
-            ErrorCode::Ok
-        }
-        extern fn get_root(fs: &mut Fs) -> *mut INode {
-            fs.fs.root_inode();
-            unimplemented!();
-        }
-        extern fn unmount(fs: &mut Fs) -> ErrorCode {
-            unimplemented!();
-        }
-        extern fn cleanup(fs: &mut Fs) {
-            unimplemented!();
-        }
-        FsOps { sync, get_root, unmount, cleanup }
+    extern fn open(inode: &mut INode, flags: u32) -> ErrorCode {
+        ErrorCode::Unimplemented
     }
-}
+    extern fn close(inode: &mut INode) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn read(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
+        let len = inode.borrow().read_at(buf.offset as usize, buf.as_mut()).unwrap();
+        buf.skip(len);
+        ErrorCode::Ok
+    }
+    extern fn write(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
+        let len = inode.borrow().write_at(buf.offset as usize, buf.as_ref()).unwrap();
+        buf.skip(len);
+        ErrorCode::Ok
+    }
+    extern fn fstat(inode: &mut INode, stat: &mut Stat) -> ErrorCode {
+        let info = inode.borrow().info().unwrap();
+        *stat = Stat::from(info);
+        ErrorCode::Ok
+    }
+    extern fn fsync(inode: &mut INode) -> ErrorCode {
+        inode.borrow_mut().sync().unwrap();
+        ErrorCode::Ok
+    }
+    extern fn namefile(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn getdirentry(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn reclaim(inode: &mut INode) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn gettype(inode: &mut INode, type_store: &mut u32) -> ErrorCode {
+        let info = inode.borrow().info().unwrap();
+        *type_store = info.type_ as u32;
+        ErrorCode::Ok
+    }
+    extern fn tryseek(inode: &mut INode, pos: i32) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn truncate(inode: &mut INode, len: i32) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn create(inode: &mut INode, name: *const u8, excl: bool, inode_store: &mut &mut INode) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn lookup(inode: &mut INode, path: &mut u8, inode_store: &mut &mut INode) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    extern fn ioctl(inode: &mut INode, op: i32, data: &mut u8) -> ErrorCode {
+        ErrorCode::Unimplemented
+    }
+    INodeOps {
+        magic: 0x8c4ba476,
+        open, close, read, write, fstat, fsync, namefile, getdirentry,
+        reclaim, gettype, tryseek, truncate, create, lookup, ioctl,
+    }
+};
 
-mod allocator {
-    use alloc::heap::{Alloc, AllocErr, Layout};
+static FS_OPS: FsOps = {
+    impl Deref for Fs {
+        type Target = Rc<vfs::FileSystem>;
 
-    extern {
-        fn kmalloc(size: usize) -> *mut u8;
-        fn kfree(ptr: *mut u8);
+        fn deref(&self) -> &Self::Target {
+            &self.fs
+        }
     }
 
-    pub struct UcoreAllocator;
+    extern fn sync(fs: &mut Fs) -> ErrorCode {
+        cprintf!("fs.sync");
+        fs.sync().unwrap();
+        ErrorCode::Ok
+    }
+    extern fn get_root(fs: &mut Fs) -> *mut INode {
+        cprintf!("fs.getroot");
+        let inode = fs.root_inode();
+        INode::get_or_create(inode, fs)
+    }
+    extern fn unmount(fs: &mut Fs) -> ErrorCode {
+        unimplemented!();
+    }
+    extern fn cleanup(fs: &mut Fs) {
+        unimplemented!();
+    }
+    FsOps { sync, get_root, unmount, cleanup }
+};
 
-    unsafe impl<'a> Alloc for &'a UcoreAllocator {
-        unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
-            const NULL: *mut u8 = 0 as *mut u8;
-            match kmalloc(layout.size()) {
-                NULL => Err(AllocErr::Exhausted { request: layout }),
-                ptr => Ok(ptr),
-            }
+/// Allocator supported by ucore functions
+pub struct UcoreAllocator;
+
+unsafe impl<'a> Alloc for &'a UcoreAllocator {
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
+        const NULL: *mut u8 = 0 as *mut u8;
+        match ucore::kmalloc(layout.size()) {
+            NULL => Err(AllocErr::Exhausted { request: layout }),
+            ptr => Ok(ptr),
         }
-        unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
-            kfree(ptr);
-        }
+    }
+    unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+        ucore::kfree(ptr);
     }
 }
