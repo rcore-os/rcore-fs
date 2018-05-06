@@ -1,4 +1,7 @@
 //! C Interfaces for ucore
+//!
+//! NOTE: Must link these sections:
+//! `*.got.*` `*.data.*` `*.rodata.*`
 
 use alloc::{rc::Rc, boxed::Box, BTreeMap};
 use core::cell::RefCell;
@@ -12,6 +15,7 @@ use vfs;
 /// Lang items for bare lib
 mod lang {
     use core;
+    use alloc::fmt;
 
     #[lang = "eh_personality"]
     #[no_mangle]
@@ -22,9 +26,10 @@ mod lang {
     #[no_mangle]
     extern fn panic_fmt(fmt: core::fmt::Arguments, file: &'static str, line: u32) -> ! {
         use super::ucore::__panic;
-        // FIXME: can not use `format`, will cause page fault
-        // let mut s = fmt::format(fmt);
-        unsafe{ __panic(file.as_ptr(), line as i32, "Rust panic\0".as_ptr()) };
+        let mut s = fmt::format(fmt);
+        s.push('\0');
+        let file = format!("{}\0", file);
+        unsafe{ __panic(file.as_ptr(), line as i32, s.as_ptr()) };
         unreachable!()
     }
 }
@@ -43,15 +48,29 @@ mod ucore {
     }
 }
 
-macro_rules! cprintf {
-    ($fmt:expr) => (unsafe{ ::c_interface::ucore::cprintf(concat!($fmt, "\0").as_ptr()); });
-    ($fmt:expr, $($arg:tt)*) => (unsafe{ ::c_interface::ucore::cprintf(concat!($fmt, "\0").as_ptr(), $($arg)*); });
+#[macro_use]
+mod macros {
+    macro_rules! cprintf {
+        ($fmt:expr) => (unsafe{ ::c_interface::ucore::cprintf(concat!($fmt, "\0").as_ptr()); });
+        ($fmt:expr, $($arg:tt)*) => (unsafe{ ::c_interface::ucore::cprintf(concat!($fmt, "\0").as_ptr(), $($arg)*); });
+    }
+
+    macro_rules! print {
+        ($($arg:tt)*) => (unsafe{ ::c_interface::ucore::cprintf(format!($($arg)*).as_ptr())});
+    }
+
+    macro_rules! println {
+        () => (print!("\n"));
+        ($fmt:expr) => (print!(concat!($fmt, "\n")));
+        ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
+    }
 }
 
 // Exports for ucore
 
 #[no_mangle]
 pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCode {
+    print!("hello ucore {}", "!");
     use sfs;
     let fs = unsafe{ ucore::create_fs_for_sfs(&FS_OPS) };
     debug_assert!(!dev.is_null());
