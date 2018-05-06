@@ -150,6 +150,7 @@ bitflags! {
 ///
 /// Match struct `iobuf` in ucore `kern/fs/iobuf.h`
 #[repr(C)]
+#[derive(Debug)]
 struct IoBuf {
     /// the base addr of buffer (used for Rd/Wr)
     base: *mut u8,
@@ -165,6 +166,7 @@ struct IoBuf {
 ///
 /// Match struct `stat` in ucore `libs/stat.h`
 #[repr(C)]
+#[derive(Debug)]
 struct Stat {
     /// protection mode and file type
     mode: u32,
@@ -195,7 +197,7 @@ const S_IFBLK: u32 = 050000;
 // TODO: Append docs from ucore
 #[repr(C)]
 pub struct INodeOps {
-    magic: u64,
+    magic: u32,
     open: extern fn(&mut INode, flags: u32) -> ErrorCode,
     close: extern fn(&mut INode) -> ErrorCode,
     read: extern fn(&mut INode, &mut IoBuf) -> ErrorCode,
@@ -223,7 +225,7 @@ pub enum ErrorCode {
     /// Process doesn't exist or otherwise
     BAD_PROC    = -2 ,
     /// Invalid parameter
-    INVAL       = -3 ,
+    Invalid = -3 ,
     /// Request failed due to memory shortage
     NO_MEM      = -4 ,
     /// Attempt to create a new process beyond
@@ -249,11 +251,11 @@ pub enum ErrorCode {
     /// Device/File is Busy
     BUSY        = -15,
     /// No Such File or Directory
-    NOENT       = -16,
+    NoEntry = -16,
     /// Is a Directory
     ISDIR       = -17,
     /// Not a Directory
-    NOTDIR      = -18,
+    NotDir = -18,
     /// Cross Device-Link
     XDEV        = -19,
     /// Unimplemented Feature
@@ -286,6 +288,10 @@ impl IoBuf {
         self.base = unsafe{ self.base.offset(len as isize) };
         self.offset += len as i32;
         self.resident -= len as u32;
+    }
+    fn write(&mut self, data: &[u8]) {
+        self.as_mut()[..data.len()].copy_from_slice(data);
+        self.skip(data.len());
     }
 }
 
@@ -428,7 +434,22 @@ static INODE_OPS: INodeOps = {
         unimplemented!();
     }
     extern fn getdirentry(inode: &mut INode, buf: &mut IoBuf) -> ErrorCode {
-        unimplemented!();
+        const ENTRY_SIZE: usize = 256;
+        println!("{:#x?}", buf);
+        if inode.borrow().info().unwrap().type_ != vfs::FileType::Dir {
+            return ErrorCode::NotDir;
+        }
+        if buf.offset as usize % ENTRY_SIZE != 0 {
+            return ErrorCode::Invalid;
+        }
+        let id = buf.offset as usize / ENTRY_SIZE;
+        let names = inode.borrow().list().unwrap();
+        println!("offset = {}", buf.offset);
+        if id >= names.len() {
+            return ErrorCode::NoEntry;
+        }
+        buf.write(names[id].as_ref());
+        ErrorCode::Ok
     }
     extern fn reclaim(inode: &mut INode) -> ErrorCode {
         println!("inode.reclaim: {:?}", inode.borrow());
@@ -506,3 +527,5 @@ unsafe impl<'a> Alloc for &'a UcoreAllocator {
         ucore::kfree(ptr);
     }
 }
+
+assert_eq_size!(ops; INodeOps, [u8; 64]);

@@ -13,6 +13,8 @@ extern crate bit_set;
 #[cfg(feature = "ucore")]
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate static_assertions;
 
 #[cfg(not(test))]
 macro_rules! eprintln {

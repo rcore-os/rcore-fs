@@ -1,7 +1,7 @@
 //! On-disk structures in SFS
 
 use core::slice;
-use core::mem::size_of_val;
+use core::mem::{size_of_val, size_of};
 use core::fmt::{Debug, Formatter, Error};
 use alloc::str;
 
@@ -182,16 +182,7 @@ pub enum FileType {
     Invalid = 0, File = 1, Dir = 2, Link = 3,
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn struct_size() {
-        use core::mem::size_of;
-        assert!(size_of::<SuperBlock>() <= BLKSIZE);
-        assert!(size_of::<DiskINode>() <= BLKSIZE);
-        assert!(size_of::<DiskEntry>() <= BLKSIZE);
-        assert_eq!(size_of::<IndirectBlock>(), BLKSIZE);
-    }
-}
+const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
+const_assert!(o2; size_of::<DiskINode>() <= BLKSIZE);
+const_assert!(o3; size_of::<DiskEntry>() <= BLKSIZE);
+const_assert!(o4; size_of::<IndirectBlock>() == BLKSIZE);
