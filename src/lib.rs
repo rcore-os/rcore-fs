@@ -10,6 +10,9 @@ extern crate spin;
 #[macro_use]
 extern crate alloc;
 extern crate bit_set;
+#[cfg(feature = "ucore")]
+#[macro_use]
+extern crate bitflags;
 
 #[cfg(not(test))]
 macro_rules! eprintln {

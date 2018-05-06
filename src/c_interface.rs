@@ -62,7 +62,8 @@ pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCod
     use self::ucore::*;
     let fs = unsafe{__alloc_fs(SFS_TYPE)};
     cprintf!("fs @ %x\n", fs);
-    let device = unsafe{ Box::from_raw(dev) };  // TODO: fix unsafe
+    let mut device = unsafe{ Box::from_raw(dev) };  // TODO: fix unsafe
+    device.open();
     unsafe{&mut (*fs)}.fs = sfs::SimpleFileSystem::open(device).unwrap();
     *fs_store = fs;
     ErrorCode::Ok
@@ -96,10 +97,24 @@ pub struct Fs {
 pub struct Device {
     blocks: usize,
     blocksize: usize,
-    open: extern fn(&mut Device, flags: u32) -> ErrorCode,
+    open: extern fn(&mut Device, flags: OpenFlags) -> ErrorCode,
     close: extern fn(&mut Device) -> ErrorCode,
     io: extern fn(&mut Device, buf: &mut IoBuf, is_write: bool) -> ErrorCode,
     ioctl: extern fn(&mut Device, op: i32, data: *mut u8) -> ErrorCode,
+}
+
+bitflags! {
+    struct OpenFlags: u32 {
+        // flags for open: choose one of these
+        const RDONLY = 0         ; // open for reading only
+        const WRONLY = 1         ; // open for writing only
+        const RDWR   = 2         ; // open for reading and writing;
+        // then or in any of these:
+        const CREAT  = 0x00000004; // create file if it does not exist
+        const EXCL   = 0x00000008; // error if CREAT and the file exists
+        const TRUNC  = 0x00000010; // truncate file upon open
+        const APPEND = 0x00000020; // append on each write
+    }
 }
 
 /// ﻿A buffer Rd/Wr status record
@@ -172,8 +187,57 @@ pub struct INodeOps {
 #[repr(i32)]
 #[derive(Debug, Eq, PartialEq)]
 pub enum ErrorCode {
-    Ok = 0,
-    Unimplemented = -1,
+    Unimplemented = -25,
+    /// No error
+    Ok          = 0 ,
+    /// Unspecified or unknown problem
+    UNSPECIFIED = -1 ,
+    /// Process doesn't exist or otherwise
+    BAD_PROC    = -2 ,
+    /// Invalid parameter
+    INVAL       = -3 ,
+    /// Request failed due to memory shortage
+    NO_MEM      = -4 ,
+    /// Attempt to create a new process beyond
+    NO_FREE_PROC= -5 ,
+    /// Memory fault
+    FAULT       = -6 ,
+    /// SWAP READ/WRITE fault
+    SWAP_FAULT  = -7 ,
+    /// Invalid elf file
+    INVAL_ELF   = -8 ,
+    /// Process is killed
+    KILLED      = -9 ,
+    /// Panic Failure
+    PANIC       = -10,
+    /// Timeout
+    TIMEOUT     = -11,
+    /// Argument is Too Big
+    TOO_BIG     = -12,
+    /// No such Device
+    NO_DEV      = -13,
+    /// Device Not Available
+    NA_DEV      = -14,
+    /// Device/File is Busy
+    BUSY        = -15,
+    /// No Such File or Directory
+    NOENT       = -16,
+    /// Is a Directory
+    ISDIR       = -17,
+    /// Not a Directory
+    NOTDIR      = -18,
+    /// Cross Device-Link
+    XDEV        = -19,
+    /// Unimplemented Feature
+    UNIMP       = -20,
+    /// Illegal Seek
+    SEEK        = -21,
+    /// Too Many Files are Open
+    MAX_OPEN    = -22,
+    /// File/Directory Already Exists
+    EXISTS      = -23,
+    /// Directory is Not Empty
+    NOTEMPTY    = -24,
 }
 
 // Wrapper functions
@@ -200,6 +264,7 @@ impl IoBuf {
     }
 }
 
+// FIXME: Must block aligned
 impl sfs::Device for Device {
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
         let mut io_buf = IoBuf {
@@ -223,6 +288,13 @@ impl sfs::Device for Device {
         let ret = (self.io)(self, &mut io_buf, true);
         assert_eq!(ret, ErrorCode::Ok);
         Some(buf.len() - io_buf.resident as usize)
+    }
+}
+
+impl Device {
+    fn open(&mut self) {
+        let ret = (self.open)(self, OpenFlags::RDWR);
+        assert_eq!(ret, ErrorCode::Ok);
     }
 }
 
