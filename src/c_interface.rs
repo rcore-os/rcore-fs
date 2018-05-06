@@ -265,7 +265,7 @@ impl IoBuf {
 }
 
 // FIXME: Must block aligned
-impl sfs::Device for Device {
+impl vfs::Device for Device {
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
         let mut io_buf = IoBuf {
             base: buf.as_mut_ptr(),

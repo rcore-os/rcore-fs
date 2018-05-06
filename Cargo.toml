@@ -12,6 +12,8 @@ panic = 'abort' # prevent `_Unwind_Resume` link error
 [dependencies]
 spin = "0.4"
 bit-set = { default-features = false, version = "0.5" } # default-features contains 'std'
+
+[target.ucore.dependencies]
 bitflags = "1.0"
 
 [features]

@@ -4,17 +4,10 @@ use alloc::{boxed::Box, Vec, BTreeMap, rc::{Rc, Weak}, String};
 use core::cell::{RefCell, RefMut};
 use dirty::Dirty;
 use super::structs::*;
-use super::vfs;
+use super::vfs::{self, Device};
 use core::mem::{uninitialized, size_of};
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
-
-/// Interface for SFS to read & write
-///     TODO: use std::io::{Read, Write}
-pub trait Device {
-    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
-}
 
 trait DeviceExt: Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {

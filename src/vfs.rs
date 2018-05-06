@@ -4,6 +4,13 @@ use core::mem::size_of;
 use core;
 use core::fmt::Debug;
 
+/// Interface for FS to read & write
+///     TODO: use std::io::{Read, Write}
+pub trait Device {
+    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
+    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
+}
+
 /// ﻿Abstract operations on a inode.
 pub trait INode: Debug {
     fn open(&mut self, flags: u32) -> Result<()>;
