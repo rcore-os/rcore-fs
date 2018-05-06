@@ -11,6 +11,7 @@
   "linker-flavor": "ld",
   "pre-link-args": ["-m32"],
   "eliminate-frame-pointer": false,
+  "no-compiler-rt": true,
   "morestack": false,
   "panic-strategy": "abort"
 }

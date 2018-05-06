@@ -35,7 +35,8 @@ mod ucore {
         pub fn inode_init(inode: &mut INode, ops: &INodeOps, fs: &mut Fs);
         pub fn inode_kill(inode: &mut INode);
         pub fn __alloc_fs(type_: i32) -> *mut Fs;
-        pub fn __panic(file: *const u8, line: i32, fmt: *const u8);
+        pub fn __panic(file: *const u8, line: i32, fmt: *const u8, ...);
+        pub fn cprintf(fmt: *const u8, ...);
         fn cputchar(c: i32);
     }
     pub const SFS_TYPE: i32 = 0; // TODO
@@ -46,6 +47,11 @@ mod ucore {
     }
 }
 
+macro_rules! cprintf {
+    ($fmt:expr) => (unsafe{ ::c_interface::ucore::cprintf(concat!($fmt, "\0").as_ptr()); });
+    ($fmt:expr, $($arg:tt)*) => (unsafe{ ::c_interface::ucore::cprintf(concat!($fmt, "\0").as_ptr(), $($arg)*); });
+}
+
 // Exports for ucore
 
 static SFS_INODE_OPS: INodeOps = INodeOps::from_rust_inode::<sfs::INode>();
@@ -54,8 +60,8 @@ static SFS_INODE_OPS: INodeOps = INodeOps::from_rust_inode::<sfs::INode>();
 #[no_mangle]
 pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCode {
     use self::ucore::*;
-    panic!("sfs_do_mount");
     let fs = unsafe{__alloc_fs(SFS_TYPE)};
+    cprintf!("fs @ %x\n", fs);
     let device = unsafe{ Box::from_raw(dev) };  // TODO: fix unsafe
     unsafe{&mut (*fs)}.fs = sfs::SimpleFileSystem::open(device).unwrap();
     *fs_store = fs;
