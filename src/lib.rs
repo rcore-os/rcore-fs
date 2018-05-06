@@ -20,12 +20,6 @@ macro_rules! eprintln {
     ($fmt:expr) => ();
     ($fmt:expr, $($arg:tt)*) => ();
 }
-#[cfg(feature = "ucore")]
-macro_rules! eprintln {
-    () => (::c_interface::ucore::print("\n"));
-    ($fmt:expr) => (::c_interface::ucore::print($fmt); ::c_interface::ucore::print("\n"););
-//    ($fmt:expr, $($arg:tt)*) => ();
-}
 
 mod dirty;
 mod vfs;

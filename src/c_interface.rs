@@ -31,19 +31,11 @@ mod lang {
 mod ucore {
     use super::*;
     extern {
-        pub fn __alloc_inode(type_: i32) -> *mut INode;
-        pub fn inode_init(inode: &mut INode, ops: &INodeOps, fs: &mut Fs);
         pub fn inode_kill(inode: &mut INode);
-        pub fn __alloc_fs(type_: i32) -> *mut Fs;
+        pub fn create_inode_for_sfs(ops: &INodeOps, fs: &mut Fs) -> *mut INode;
+        pub fn create_fs_for_sfs(ops: &FsOps) -> *mut Fs;
         pub fn __panic(file: *const u8, line: i32, fmt: *const u8, ...);
         pub fn cprintf(fmt: *const u8, ...);
-        fn cputchar(c: i32);
-    }
-    pub const SFS_TYPE: i32 = 0; // TODO
-    pub fn print(s: &str) {
-        for c in s.chars() {
-            unsafe{ cputchar(c as i32);}
-        }
     }
 }
 
@@ -55,12 +47,13 @@ macro_rules! cprintf {
 // Exports for ucore
 
 static SFS_INODE_OPS: INodeOps = INodeOps::from_rust_inode::<sfs::INode>();
-//static SFS_FS: *mut Fs = 0 as *mut _;
+static SFS_FS_OPS: FsOps = FsOps::from_rust_fs::<sfs::SimpleFileSystem>();
 
 #[no_mangle]
 pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCode {
     use self::ucore::*;
-    let fs = unsafe{__alloc_fs(SFS_TYPE)};
+    let fs = unsafe{create_fs_for_sfs(&SFS_FS_OPS)};
+    debug_assert!(!dev.is_null());
     let mut device = unsafe{ Box::from_raw(dev) };  // TODO: fix unsafe
     device.open();
     unsafe{&mut (*fs)}.fs = sfs::SimpleFileSystem::open(device).unwrap();
@@ -86,6 +79,21 @@ struct INode {
 pub struct Fs {
     fs: Rc<vfs::FileSystem>,
     // ... fields handled extern
+}
+
+/// ﻿A temp structure to pass function pointers to C
+///
+/// Match struct `fs_ops` in ucore `kern/fs/sfs/sfs.c`
+#[repr(C)]
+pub struct FsOps {
+    /// Flush all dirty buffers to disk
+    sync: extern fn(&mut Fs) -> ErrorCode,
+    /// Return root inode of filesystem.
+    get_root: extern fn(&mut Fs) -> *mut INode,
+    /// Attempt unmount of filesystem.
+    unmount: extern fn(&mut Fs) -> ErrorCode,
+    /// Cleanup of filesystem.???
+    cleanup: extern fn(&mut Fs),
 }
 
 /// Filesystem-namespace-accessible device.
@@ -324,13 +332,11 @@ impl Device {
 }
 
 impl INode {
-    fn new() -> *mut Self {
+    fn new(fs: &mut Fs) -> &mut Self {
         use self::ucore::*;
-        let ptr = unsafe{ __alloc_inode(SFS_TYPE) };
-        assert!(!ptr.is_null());
-//        inode_init(ptr, &SFS_INODE_OPS as *const _, SFS_FS);
-        ptr
-
+        let inode = unsafe{ create_inode_for_sfs(&SFS_INODE_OPS, fs) };
+        assert!(!inode.is_null());
+        unsafe{ &mut *inode }
     }
     fn drop(&mut self) {
         use self::ucore::*;
@@ -417,9 +423,28 @@ impl INodeOps {
     }
 }
 
+impl FsOps {
+    const fn from_rust_fs<T: vfs::FileSystem>() -> Self {
+        extern fn sync(fs: &mut Fs) -> ErrorCode {
+            fs.fs.sync().unwrap();
+            ErrorCode::Ok
+        }
+        extern fn get_root(fs: &mut Fs) -> *mut INode {
+            fs.fs.root_inode();
+            unimplemented!();
+        }
+        extern fn unmount(fs: &mut Fs) -> ErrorCode {
+            unimplemented!();
+        }
+        extern fn cleanup(fs: &mut Fs) {
+            unimplemented!();
+        }
+        FsOps { sync, get_root, unmount, cleanup }
+    }
+}
+
 mod allocator {
     use alloc::heap::{Alloc, AllocErr, Layout};
-    use core::ptr::NonNull;
 
     extern {
         fn kmalloc(size: usize) -> *mut u8;

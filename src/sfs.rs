@@ -43,6 +43,8 @@ pub struct INode {
     id: INodeId,
     /// Weak reference to SFS, used by almost all operations
     fs: Weak<SimpleFileSystem>,
+    // Point to inode in ucore VFS, used by c_interface
+//    ucore_inode: *const (),
 }
 
 impl Debug for INode {
@@ -413,17 +415,12 @@ impl SimpleFileSystem {
         }.wrap();
 
         // Init root INode
-        let inode = Rc::new(RefCell::new(INode {
-            disk_inode: Dirty::new_dirty(DiskINode::new_dir()),
-            id: BLKN_ROOT,
-            fs: Rc::downgrade(&sfs),
-        }));
-        inode.borrow_mut().init_dir(BLKN_ROOT).unwrap();
         {
             use vfs::INode;
-            inode.borrow_mut().sync().unwrap();
+            let root = sfs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
+            root.borrow_mut().init_dir(BLKN_ROOT).unwrap();
+            root.borrow_mut().sync().unwrap();
         }
-        sfs.inodes.borrow_mut().insert(BLKN_ROOT, inode);
 
         sfs
     }
