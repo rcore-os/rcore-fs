@@ -41,10 +41,13 @@ mod ucore {
     extern {
         pub fn kmalloc(size: usize) -> *mut u8;
         pub fn kfree(ptr: *mut u8);
+
         pub fn inode_kill(inode: &mut INode);
         pub fn inode_get_fs(inode: *mut INode) -> *mut Fs;
+        pub fn inode_ref_inc(inode: *mut INode) -> i32;
         pub fn create_inode_for_sfs(ops: &INodeOps, fs: *mut Fs) -> *mut INode;
         pub fn create_fs_for_sfs(ops: &FsOps) -> *mut Fs;
+
         pub fn __panic(file: *const u8, line: i32, fmt: *const u8, ...);
         pub fn cprintf(fmt: *const u8, ...);
     }
@@ -61,10 +64,18 @@ mod macros {
         ($($arg:tt)*) => (unsafe{ ::c_interface::ucore::cprintf(format!($($arg)*).as_ptr())});
     }
 
+    #[cfg(feature = "debug_print")]
     macro_rules! println {
         () => (print!("\n"));
         ($fmt:expr) => (print!(concat!($fmt, "\n")));
         ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
+    }
+
+    #[cfg(not(feature = "debug_print"))]
+    macro_rules! println {
+        () => ();
+        ($fmt:expr) => ();
+        ($fmt:expr, $($arg:tt)*) => ();
     }
 }
 
@@ -262,7 +273,7 @@ pub enum ErrorCode {
     /// No Such File or Directory
     NoEntry = -16,
     /// Is a Directory
-    ISDIR       = -17,
+    IsDir = -17,
     /// Not a Directory
     NotDir = -18,
     /// Cross Device-Link
@@ -499,10 +510,17 @@ static INODE_OPS: INodeOps = {
     extern fn lookup(inode: &mut INode, path: *mut u8, inode_store: &mut *mut INode) -> ErrorCode {
         let path = unsafe{ libc::from_cstr(path) };
         println!("inode.lookup({:?}) at {:?}", path, inode.borrow());
-        let target = inode.borrow().lookup(path).unwrap();
-        let fs = unsafe{ ucore::inode_get_fs(inode) };
-        *inode_store = INode::get_or_create(target, fs);
-        ErrorCode::Ok
+        let target = inode.borrow().lookup(path);
+        match target {
+            Ok(target) => {
+                let fs = unsafe{ ucore::inode_get_fs(inode) };
+                let inode = INode::get_or_create(target, fs);
+                unsafe { ucore::inode_ref_inc(inode) };
+                *inode_store = inode;
+                ErrorCode::Ok
+            },
+            Err(_) => ErrorCode::NoEntry,
+        }
     }
     extern fn ioctl(inode: &mut INode, op: i32, data: *mut u8) -> ErrorCode {
         unimplemented!();
