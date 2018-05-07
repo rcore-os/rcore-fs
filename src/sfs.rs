@@ -306,6 +306,9 @@ impl vfs::INode for INode {
                 String::from(entry.name.as_ref())
             }).collect())
     }
+    fn fs(&self) -> Weak<vfs::FileSystem> {
+        self.fs.clone()
+    }
 }
 
 impl Drop for INode {
@@ -518,6 +521,13 @@ impl vfs::FileSystem for SimpleFileSystem {
 
     fn root_inode(&self) -> Ptr<vfs::INode> {
         self.get_inode(BLKN_ROOT)
+    }
+
+    fn info(&self) -> &'static vfs::FsInfo {
+        static INFO: vfs::FsInfo = vfs::FsInfo {
+            max_file_size: MAX_FILE_SIZE,
+        };
+        &INFO
     }
 }
 
