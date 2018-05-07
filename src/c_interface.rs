@@ -309,6 +309,10 @@ impl IoBuf {
         self.offset += len as i32;
         self.resident -= len as u32;
     }
+    fn skip_to(&mut self, offset: usize) {
+        let now = self.offset as usize;
+        self.skip(offset - now);
+    }
     fn write(&mut self, data: &[u8]) {
         self.as_mut()[..data.len()].copy_from_slice(data);
         self.skip(data.len());
@@ -406,7 +410,10 @@ impl INode {
 impl From<vfs::FileInfo> for Stat {
     fn from(info: vfs::FileInfo) -> Self {
         Stat {
-            mode: info.mode,
+            mode: info.mode | match info.type_ {
+                vfs::FileType::File => S_IFREG,
+                vfs::FileType::Dir => S_IFDIR,
+            },
             nlinks: 0,
             blocks: info.blocks as u32,
             size: info.size as u32,
@@ -472,6 +479,8 @@ static INODE_OPS: INodeOps = {
             return ErrorCode::NoEntry;
         }
         buf.write(names[id].as_ref());
+        buf.write(b"\0");
+        buf.skip_to((id + 1) * ENTRY_SIZE);
         ErrorCode::Ok
     }
     extern fn reclaim(inode: &mut INode) -> ErrorCode {
