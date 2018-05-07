@@ -189,7 +189,7 @@ struct IoBuf {
 #[derive(Debug)]
 struct Stat {
     /// protection mode and file type
-    mode: u32,
+    mode: Mode,
     /// number of hard links
     nlinks: u32,
     /// number of blocks file is using
@@ -198,18 +198,29 @@ struct Stat {
     size: u32,
 }
 
-/// mask for type of file
-const S_IFMT: u32 = 0o70000;
-/// ordinary regular file
-const S_IFREG: u32 = 0o10000;
-/// directory
-const S_IFDIR: u32 = 0o20000;
-/// symbolic link
-const S_IFLNK: u32 = 0o30000;
-/// character device
-const S_IFCHR: u32 = 0o40000;
-/// block device
-const S_IFBLK: u32 = 0o50000;
+bitflags! {
+    struct Mode: u32 {
+        /// ordinary regular file
+        const File = 0o10000;
+        /// directory
+        const Dir = 0o20000;
+        /// symbolic link
+        const Link = 0o30000;
+        /// character device
+        const Char = 0o40000;
+        /// block device
+        const Block = 0o50000;
+    }
+}
+
+impl From<vfs::FileType> for Mode {
+    fn from(type_: vfs::FileType) -> Self {
+        match type_ {
+            vfs::FileType::File => Mode::File,
+            vfs::FileType::Dir => Mode::Dir,
+        }
+    }
+}
 
 /// ﻿Abstract operations on a inode.
 ///
@@ -410,10 +421,7 @@ impl INode {
 impl From<vfs::FileInfo> for Stat {
     fn from(info: vfs::FileInfo) -> Self {
         Stat {
-            mode: info.mode | match info.type_ {
-                vfs::FileType::File => S_IFREG,
-                vfs::FileType::Dir => S_IFDIR,
-            },
+            mode: Mode::from(info.type_),
             nlinks: 0,
             blocks: info.blocks as u32,
             size: info.size as u32,
@@ -491,10 +499,7 @@ static INODE_OPS: INodeOps = {
         println!("inode.gettype: {:?}", inode.borrow());
         let info = inode.borrow().info().unwrap();
         // Inconsistent docs in ucore !
-        *type_store = match info.type_ {
-            vfs::FileType::File => S_IFREG,
-            vfs::FileType::Dir => S_IFDIR,
-        };
+        *type_store = Mode::from(info.type_).bits();
         ErrorCode::Ok
     }
     extern fn tryseek(inode: &mut INode, pos: i32) -> ErrorCode {
