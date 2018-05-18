@@ -32,6 +32,9 @@ pub mod c_interface;
 #[cfg(test)]
 mod tests;
 
+pub use sfs::*;
+pub use vfs::*;
+
 #[cfg(feature = "ucore")]
 #[global_allocator]
 pub static UCORE_ALLOCATOR: c_interface::UcoreAllocator = c_interface::UcoreAllocator{};

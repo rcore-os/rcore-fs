@@ -22,8 +22,8 @@ pub trait INode: Debug {
 //    fn name_file(&mut self) -> Result<()>;
 //    fn reclaim(&mut self) -> Result<()>;
     fn resize(&mut self, len: usize) -> Result<()>;
-    fn create(&mut self, name: &'static str, type_: FileType) -> Result<INodePtr>;
-    fn lookup(&self, path: &'static str) -> Result<INodePtr>;
+    fn create(&mut self, name: &str, type_: FileType) -> Result<INodePtr>;
+    fn lookup(&self, path: &str) -> Result<INodePtr>;
     fn list(&self) -> Result<Vec<String>>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
     fn fs(&self) -> Weak<FileSystem>;

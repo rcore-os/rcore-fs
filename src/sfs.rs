@@ -96,7 +96,7 @@ impl INode {
         }
     }
     /// Only for Dir
-    fn get_file_inode_id(&self, name: &'static str) -> Option<INodeId> {
+    fn get_file_inode_id(&self, name: &str) -> Option<INodeId> {
         (0..self.disk_inode.blocks)
             .map(|i| {
                 use vfs::INode;
@@ -249,7 +249,7 @@ impl vfs::INode for INode {
         assert_eq!(self.disk_inode.type_, FileType::File, "resize is only available on file");
         self._resize(len)
     }
-    fn create(&mut self, name: &'static str, type_: vfs::FileType) -> vfs::Result<Ptr<vfs::INode>> {
+    fn create(&mut self, name: &str, type_: vfs::FileType) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
@@ -273,7 +273,7 @@ impl vfs::INode for INode {
 
         Ok(inode)
     }
-    fn lookup(&self, path: &'static str) -> vfs::Result<Ptr<vfs::INode>> {
+    fn lookup(&self, path: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);

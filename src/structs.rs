@@ -82,15 +82,15 @@ impl Debug for Str32 {
         write!(f, "{}", self.as_ref())
     }
 }
-impl From<&'static str> for Str256 {
-    fn from(s: &'static str) -> Self {
+impl<'a> From<&'a str> for Str256 {
+    fn from(s: &'a str) -> Self {
         let mut ret = [0u8; 256];
         ret[0..s.len()].copy_from_slice(s.as_ref());
         Str256(ret)
     }
 }
-impl From<&'static str> for Str32 {
-    fn from(s: &'static str) -> Self {
+impl<'a> From<&'a str> for Str32 {
+    fn from(s: &'a str) -> Self {
         let mut ret = [0u8; 32];
         ret[0..s.len()].copy_from_slice(s.as_ref());
         Str32(ret)
