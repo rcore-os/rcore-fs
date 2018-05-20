@@ -40,7 +40,7 @@ fn _create_new_sfs() -> Rc<SimpleFileSystem> {
     SimpleFileSystem::create(Box::new(file), 32 * 4096)
 }
 
-#[test]
+//#[test]
 fn open_sample_file() {
     _open_sample_file();
 }
@@ -50,7 +50,7 @@ fn create_new_sfs() {
     let sfs = _create_new_sfs();
 }
 
-#[test]
+//#[test]
 fn print_root() {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
