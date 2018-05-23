@@ -12,6 +12,7 @@ use alloc::heap::{Alloc, AllocErr, Layout};
 use core::mem::{size_of, self};
 use core::ptr;
 use vfs;
+use blocked_device::BlockedDevice;
 
 /// Lang items for bare lib
 mod lang {
@@ -330,56 +331,40 @@ impl IoBuf {
     }
 }
 
-impl vfs::Device for Device {
-    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
+impl BlockedDevice for Device {
+    fn block_size_log2(&self) -> u8 {
         if self.blocksize != 4096 {
             unimplemented!("block_size != 4096 is not supported yet");
         }
-        let begin_block = offset / 4096;
-        let end_block = (offset + buf.len() - 1) / 4096;    // inclusive
-        let begin_offset = offset % 4096;
-        let end_offset = (offset + buf.len() - 1) % 4096;
-        assert_eq!(begin_block, end_block, "more than 1 block is not supported yet");
+        12
+    }
 
-        use core::mem::uninitialized;
-        let mut block_buf: [u8; 4096] = unsafe{ uninitialized() };
+    fn read_at(&mut self, block_id: usize, buf: &mut [u8]) -> bool {
+        assert!(buf.len() >= 4096);
         let mut io_buf = IoBuf {
-            base: block_buf.as_mut_ptr(),
-            offset: (begin_block * 4096) as i32,
+            base: buf.as_mut_ptr(),
+            offset: (block_id * 4096) as i32,
             len: 4096,
             resident: 4096,
         };
         let ret = (self.io)(self, &mut io_buf, false);
         assert_eq!(ret, ErrorCode::Ok);
         assert_eq!(io_buf.resident, 0);
-        buf.copy_from_slice(&block_buf[begin_offset .. end_offset+1]);
-        Some(buf.len())
+        true
     }
 
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
-        if self.blocksize != 4096 {
-            unimplemented!("block_size != 4096 is not supported yet");
-        }
-        let begin_block = offset / 4096;
-        let end_block = (offset + buf.len() - 1) / 4096;    // inclusive
-        let begin_offset = offset % 4096;
-        let end_offset = (offset + buf.len() - 1) % 4096;
-        assert_eq!(begin_block, end_block, "more than 1 block is not supported yet");
-
-        use core::mem::uninitialized;
-        let mut block_buf: [u8; 4096] = unsafe{ uninitialized() };
+    fn write_at(&mut self, block_id: usize, buf: &[u8]) -> bool {
+        assert!(buf.len() >= 4096);
         let mut io_buf = IoBuf {
-            base: block_buf.as_mut_ptr(),
-            offset: (begin_block * 4096) as i32,
+            base: buf.as_ptr() as *mut _,
+            offset: (block_id * 4096) as i32,
             len: 4096,
             resident: 4096,
         };
-        block_buf[begin_offset .. end_offset+1].copy_from_slice(&buf);
-
         let ret = (self.io)(self, &mut io_buf, true);
         assert_eq!(ret, ErrorCode::Ok);
         assert_eq!(io_buf.resident, 0);
-        Some(buf.len())
+        true
     }
 }
 
