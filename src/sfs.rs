@@ -2,12 +2,13 @@ use spin::Mutex;
 use bit_set::BitSet;
 use alloc::{boxed::Box, Vec, BTreeMap, rc::{Rc, Weak}, String};
 use core::cell::{RefCell, RefMut};
-use dirty::Dirty;
-use super::structs::*;
-use super::vfs::{self, Device};
 use core::mem::{uninitialized, size_of};
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
+use dirty::Dirty;
+use structs::*;
+use vfs::{self, Device};
+use util::*;
 
 trait DeviceExt: Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
@@ -180,6 +181,7 @@ impl INode {
         let iter = BlockIter {
             begin: size.min(begin),
             end: size.min(end),
+            block_size_log2: BLKSIZE_LOG2,
         };
 
         // For each block
@@ -316,40 +318,6 @@ impl Drop for INode {
     fn drop(&mut self) {
         use vfs::INode;
         self.sync().expect("failed to sync");
-    }
-}
-
-/// Given a range and iterate sub-range for each block
-struct BlockIter {
-    begin: usize,
-    end: usize,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct BlockRange {
-    block: BlockId,
-    begin: usize,
-    end: usize,
-}
-
-impl BlockRange {
-    fn len(&self) -> usize {
-        self.end - self.begin
-    }
-}
-
-impl Iterator for BlockIter {
-    type Item = BlockRange;
-
-    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        if self.begin >= self.end {
-            return None;
-        }
-        let block = self.begin / BLKSIZE;
-        let begin = self.begin % BLKSIZE;
-        let end = if block == self.end / BLKSIZE { self.end % BLKSIZE } else { BLKSIZE };
-        self.begin += end - begin;
-        Some(BlockRange { block, begin, end })
     }
 }
 
@@ -574,19 +542,5 @@ impl From<FileType> for vfs::FileType {
             FileType::Dir => vfs::FileType::Dir,
             _ => panic!("unknown file type"),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn block_iter() {
-        let mut iter = BlockIter { begin: 0x123, end: 0x2018 };
-        assert_eq!(iter.next(), Some(BlockRange { block: 0, begin: 0x123, end: 0x1000 }));
-        assert_eq!(iter.next(), Some(BlockRange { block: 1, begin: 0, end: 0x1000 }));
-        assert_eq!(iter.next(), Some(BlockRange { block: 2, begin: 0, end: 0x18 }));
-        assert_eq!(iter.next(), None);
     }
 }

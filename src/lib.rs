@@ -24,6 +24,8 @@ macro_rules! eprintln {
 }
 
 mod dirty;
+mod util;
+mod blocked_device;
 mod vfs;
 mod sfs;
 mod structs;
@@ -34,6 +36,7 @@ mod tests;
 
 pub use sfs::*;
 pub use vfs::*;
+pub use blocked_device::BlockedDevice;
 
 #[cfg(feature = "ucore")]
 #[global_allocator]
