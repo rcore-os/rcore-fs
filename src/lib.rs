@@ -3,10 +3,9 @@
 #![cfg_attr(feature = "ucore", feature(allocator_api, global_allocator, lang_items))]
 #![no_std]
 
-#[cfg(test)]
+#[cfg(any(test, feature = "std"))]
 #[macro_use]
 extern crate std;
-extern crate spin;
 #[macro_use]
 extern crate alloc;
 extern crate bit_set;
@@ -38,3 +37,28 @@ pub use vfs::*;
 #[cfg(feature = "ucore")]
 #[global_allocator]
 pub static UCORE_ALLOCATOR: c_interface::UcoreAllocator = c_interface::UcoreAllocator{};
+
+#[cfg(any(test, feature = "std"))]
+pub mod std_impl {
+    use std::fs::{File, OpenOptions};
+    use std::io::{Read, Write, Seek, SeekFrom};
+    use super::Device;
+
+    impl Device for File {
+        fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
+            let offset = offset as u64;
+            match self.seek(SeekFrom::Start(offset)) {
+                Ok(real_offset) if real_offset == offset => self.read(buf).ok(),
+                _ => None,
+            }
+        }
+
+        fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
+            let offset = offset as u64;
+            match self.seek(SeekFrom::Start(offset)) {
+                Ok(real_offset) if real_offset == offset => self.write(buf).ok(),
+                _ => None,
+            }
+        }
+    }
+}

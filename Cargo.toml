@@ -4,13 +4,18 @@ version = "0.0.1"
 authors = ["WangRunji <wangrunji0408@163.com>"]
 
 [lib]
+name = "lib"
 #crate-type = ["staticlib"]
+
+[[bin]]
+name = "mksfs"
+path = "src/bin/mksfs.rs"
+required-features = ["std"]
 
 [profile.dev]
 panic = 'abort' # prevent `_Unwind_Resume` link error
 
 [dependencies]
-spin = "0.4"
 bit-set = { default-features = false, version = "0.5" } # default-features contains 'std'
 static_assertions = "0.2.5"
 
@@ -20,3 +25,4 @@ bitflags = "1.0"
 [features]
 debug_print = []
 ucore = []
+std = []

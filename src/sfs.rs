@@ -1,4 +1,3 @@
-use spin::Mutex;
 use bit_set::BitSet;
 use alloc::{boxed::Box, Vec, BTreeMap, rc::{Rc, Weak}, String};
 use core::cell::{RefCell, RefMut};
