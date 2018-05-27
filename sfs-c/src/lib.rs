@@ -3,6 +3,18 @@
 //! NOTE: Must link these sections:
 //! `*.got.*` `*.data.*` `*.rodata.*`
 
+#![feature(allocator_api, global_allocator, lang_items)]
+#![feature(alloc)]
+#![no_std]
+
+#[macro_use]
+extern crate alloc;
+extern crate simple_filesystem;
+#[macro_use]
+extern crate bitflags;
+#[macro_use]
+extern crate static_assertions;
+
 use alloc::{rc::Rc, boxed::Box, BTreeMap};
 use core::cell::RefCell;
 use core::slice;
@@ -11,8 +23,8 @@ use core::cmp::Ordering;
 use alloc::heap::{Alloc, AllocErr, Layout};
 use core::mem::{size_of, self};
 use core::ptr;
-use vfs;
-use blocked_device::BlockedDevice;
+use simple_filesystem as sfs;
+use simple_filesystem as vfs;
 
 /// Lang items for bare lib
 mod lang {
@@ -331,7 +343,7 @@ impl IoBuf {
     }
 }
 
-impl BlockedDevice for Device {
+impl vfs::BlockedDevice for Device {
     fn block_size_log2(&self) -> u8 {
         if self.blocksize != 4096 {
             unimplemented!("block_size != 4096 is not supported yet");
@@ -561,6 +573,9 @@ static FS_OPS: FsOps = {
 
 /// Allocator supported by ucore functions
 pub struct UcoreAllocator;
+
+#[global_allocator]
+pub static UCORE_ALLOCATOR: UcoreAllocator = UcoreAllocator;
 
 unsafe impl<'a> Alloc for &'a UcoreAllocator {
     unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
