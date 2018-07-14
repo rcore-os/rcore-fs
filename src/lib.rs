@@ -1,5 +1,6 @@
 #![feature(alloc)]
 #![feature(const_fn)]
+#![cfg_attr(target_arch = "riscv", feature(match_default_bindings))]
 #![no_std]
 
 #[cfg(any(test, feature = "std"))]
