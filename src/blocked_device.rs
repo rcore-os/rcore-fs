@@ -3,7 +3,7 @@ use vfs::Device;
 
 /// Device which can only R/W in blocks
 pub trait BlockedDevice {
-    fn block_size_log2(&self) -> u8;
+    const BLOCK_SIZE_LOG2: u8;
     fn read_at(&mut self, block_id: usize, buf: &mut [u8]) -> bool;
     fn write_at(&mut self, block_id: usize, buf: &[u8]) -> bool;
 }
@@ -20,7 +20,7 @@ impl<T: BlockedDevice> Device for T {
         let iter = BlockIter {
             begin: offset,
             end: offset + buf.len(),
-            block_size_log2: self.block_size_log2(),
+            block_size_log2: Self::BLOCK_SIZE_LOG2,
         };
 
         // For each block
@@ -33,7 +33,7 @@ impl<T: BlockedDevice> Device for T {
             } else {
                 use core::mem::uninitialized;
                 let mut block_buf: [u8; 4096] = unsafe { uninitialized() };
-                assert!(self.block_size_log2() <= 12);
+                assert!(Self::BLOCK_SIZE_LOG2 <= 12);
                 // Read to local buf first
                 try0!(len, BlockedDevice::read_at(self, range.block, &mut block_buf));
                 // Copy to target buf then
@@ -47,7 +47,7 @@ impl<T: BlockedDevice> Device for T {
         let iter = BlockIter {
             begin: offset,
             end: offset + buf.len(),
-            block_size_log2: self.block_size_log2(),
+            block_size_log2: Self::BLOCK_SIZE_LOG2,
         };
 
         // For each block
@@ -60,7 +60,7 @@ impl<T: BlockedDevice> Device for T {
             } else {
                 use core::mem::uninitialized;
                 let mut block_buf: [u8; 4096] = unsafe { uninitialized() };
-                assert!(self.block_size_log2() <= 12);
+                assert!(Self::BLOCK_SIZE_LOG2 <= 12);
                 // Read to local buf first
                 try0!(len, BlockedDevice::read_at(self, range.block, &mut block_buf));
                 // Write to local buf
@@ -78,7 +78,7 @@ mod test {
     use super::*;
 
     impl BlockedDevice for [u8; 16] {
-        fn block_size_log2(&self) -> u8 { 2 }
+        const BLOCK_SIZE_LOG2: u8 = 2;
         fn read_at(&mut self, block_id: usize, buf: &mut [u8]) -> bool {
             if block_id >= 4 {
                 return false;
