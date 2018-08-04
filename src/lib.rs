@@ -8,7 +8,7 @@
 extern crate std;
 #[macro_use]
 extern crate alloc;
-extern crate bit_set;
+extern crate bit_vec;
 #[macro_use]
 extern crate static_assertions;
 
