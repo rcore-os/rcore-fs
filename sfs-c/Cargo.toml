@@ -1,0 +1,15 @@
+[package]
+name = "sfs-c"
+version = "0.0.1"
+authors = ["WangRunji <wangrunji0408@163.com>"]
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = 'abort' # prevent `_Unwind_Resume` link error
+
+[dependencies]
+bitflags = "1.0"
+static_assertions = "0.2.5"
+simple-filesystem = { path = ".." }

@@ -1,12 +1,13 @@
-use bit_set::BitSet;
-use alloc::{boxed::Box, Vec, BTreeMap, rc::{Rc, Weak}, String};
+use bit_vec::BitVec;
+use alloc::{boxed::Box, vec::Vec, collections::BTreeMap, rc::{Rc, Weak}, string::String};
 use core::cell::{RefCell, RefMut};
-use dirty::Dirty;
-use super::structs::*;
-use super::vfs::{self, Device};
 use core::mem::{uninitialized, size_of};
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
+use dirty::Dirty;
+use structs::*;
+use vfs::{self, Device};
+use util::*;
 
 trait DeviceExt: Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
@@ -179,6 +180,7 @@ impl INode {
         let iter = BlockIter {
             begin: size.min(begin),
             end: size.min(end),
+            block_size_log2: BLKSIZE_LOG2,
         };
 
         // For each block
@@ -318,40 +320,6 @@ impl Drop for INode {
     }
 }
 
-/// Given a range and iterate sub-range for each block
-struct BlockIter {
-    begin: usize,
-    end: usize,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct BlockRange {
-    block: BlockId,
-    begin: usize,
-    end: usize,
-}
-
-impl BlockRange {
-    fn len(&self) -> usize {
-        self.end - self.begin
-    }
-}
-
-impl Iterator for BlockIter {
-    type Item = BlockRange;
-
-    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        if self.begin >= self.end {
-            return None;
-        }
-        let block = self.begin / BLKSIZE;
-        let begin = self.begin % BLKSIZE;
-        let end = if block == self.end / BLKSIZE { self.end % BLKSIZE } else { BLKSIZE };
-        self.begin += end - begin;
-        Some(BlockRange { block, begin, end })
-    }
-}
-
 
 /// filesystem for sfs
 ///
@@ -363,7 +331,7 @@ pub struct SimpleFileSystem {
     /// on-disk superblock
     super_block: RefCell<Dirty<SuperBlock>>,
     /// blocks in use are mared 0
-    free_map: RefCell<Dirty<BitSet>>,
+    free_map: RefCell<Dirty<BitVec>>,
     /// inode list
     inodes: RefCell<BTreeMap<INodeId, Ptr<INode>>>,
     /// device
@@ -383,7 +351,7 @@ impl SimpleFileSystem {
 
         Some(SimpleFileSystem {
             super_block: RefCell::new(Dirty::new(super_block)),
-            free_map: RefCell::new(Dirty::new(BitSet::from_bytes(&free_map))),
+            free_map: RefCell::new(Dirty::new(BitVec::from_bytes(&free_map))),
             inodes: RefCell::new(BTreeMap::<INodeId, Ptr<INode>>::new()),
             device: RefCell::new(device),
             self_ptr: Weak::default(),
@@ -401,9 +369,9 @@ impl SimpleFileSystem {
             info: Str32::from("simple file system"),
         };
         let free_map = {
-            let mut bitset = BitSet::with_capacity(BLKBITS);
+            let mut bitset = BitVec::from_elem(BLKBITS, false);
             for i in 3..blocks {
-                bitset.insert(i);
+                bitset.set(i, true);
             }
             bitset
         };
@@ -449,8 +417,8 @@ impl SimpleFileSystem {
     /// Free a block
     fn free_block(&self, block_id: usize) {
         let mut free_map = self.free_map.borrow_mut();
-        assert!(!free_map.contains(block_id));
-        free_map.insert(block_id);
+        assert!(!free_map[block_id]);
+        free_map.set(block_id, true);
         self.super_block.borrow_mut().unused_blocks += 1;
     }
 
@@ -468,7 +436,7 @@ impl SimpleFileSystem {
     /// Get inode by id. Load if not in memory.
     /// ** Must ensure it's a valid INode **
     fn get_inode(&self, id: INodeId) -> Ptr<INode> {
-        assert!(!self.free_map.borrow().contains(id));
+        assert!(!self.free_map.borrow()[id]);
 
         // Load if not in memory.
         if !self.inodes.borrow().contains_key(&id) {
@@ -542,24 +510,24 @@ trait BitsetAlloc {
     fn alloc(&mut self) -> Option<usize>;
 }
 
-impl BitsetAlloc for BitSet {
+impl BitsetAlloc for BitVec {
     fn alloc(&mut self) -> Option<usize> {
         // TODO: more efficient
-        let id = (0..self.len()).find(|&i| self.contains(i));
+        let id = (0..self.len()).find(|&i| self[i]);
         if let Some(id) = id {
-            self.remove(id);
+            self.set(id, false);
         }
         id
     }
 }
 
-impl AsBuf for BitSet {
+impl AsBuf for BitVec {
     fn as_buf(&self) -> &[u8] {
-        let slice = self.get_ref().storage();
+        let slice = self.storage();
         unsafe { slice::from_raw_parts(slice as *const _ as *const u8, slice.len() * 4) }
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
-        let slice = self.get_ref().storage();
+        let slice = self.storage();
         unsafe { slice::from_raw_parts_mut(slice as *const _ as *mut u8, slice.len() * 4) }
     }
 }
@@ -573,19 +541,5 @@ impl From<FileType> for vfs::FileType {
             FileType::Dir => vfs::FileType::Dir,
             _ => panic!("unknown file type"),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn block_iter() {
-        let mut iter = BlockIter { begin: 0x123, end: 0x2018 };
-        assert_eq!(iter.next(), Some(BlockRange { block: 0, begin: 0x123, end: 0x1000 }));
-        assert_eq!(iter.next(), Some(BlockRange { block: 1, begin: 0, end: 0x1000 }));
-        assert_eq!(iter.next(), Some(BlockRange { block: 2, begin: 0, end: 0x18 }));
-        assert_eq!(iter.next(), None);
     }
 }

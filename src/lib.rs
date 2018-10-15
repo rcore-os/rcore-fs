@@ -1,6 +1,6 @@
 #![feature(alloc)]
 #![feature(const_fn)]
-#![cfg_attr(feature = "ucore", feature(allocator_api, global_allocator, lang_items))]
+#![cfg_attr(target_arch = "riscv", feature(match_default_bindings))]
 #![no_std]
 
 #[cfg(any(test, feature = "std"))]
@@ -8,10 +8,7 @@
 extern crate std;
 #[macro_use]
 extern crate alloc;
-extern crate bit_set;
-#[cfg(feature = "ucore")]
-#[macro_use]
-extern crate bitflags;
+extern crate bit_vec;
 #[macro_use]
 extern crate static_assertions;
 
@@ -23,20 +20,17 @@ macro_rules! eprintln {
 }
 
 mod dirty;
+mod util;
+mod blocked_device;
 mod vfs;
 mod sfs;
 mod structs;
-#[cfg(feature = "ucore")]
-pub mod c_interface;
 #[cfg(test)]
 mod tests;
 
 pub use sfs::*;
 pub use vfs::*;
-
-#[cfg(feature = "ucore")]
-#[global_allocator]
-pub static UCORE_ALLOCATOR: c_interface::UcoreAllocator = c_interface::UcoreAllocator{};
+pub use blocked_device::BlockedDevice;
 
 #[cfg(any(test, feature = "std"))]
 pub mod std_impl {
