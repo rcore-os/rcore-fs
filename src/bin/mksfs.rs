@@ -1,11 +1,11 @@
-extern crate lib;
+extern crate simple_filesystem;
 
 use std::env;
 use std::fs;
 use std::io::{Read, Write, Result};
 use std::path::Path;
 use std::mem::uninitialized;
-use lib::*;
+use simple_filesystem::*;
 
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();

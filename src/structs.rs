@@ -153,7 +153,9 @@ pub type INodeId = BlockId;
 /// magic number for sfs
 pub const MAGIC: u32 = 0x2f8dbe2a;
 /// size of block
-pub const BLKSIZE: usize = 4096;
+pub const BLKSIZE: usize = 1usize << BLKSIZE_LOG2;
+/// log2( size of block )
+pub const BLKSIZE_LOG2: u8 = 12;
 /// number of direct blocks in inode
 pub const NDIRECT: usize = 12;
 /// max length of infomation
