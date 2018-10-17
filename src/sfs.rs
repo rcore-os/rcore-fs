@@ -144,7 +144,7 @@ impl INode {
                     self.set_disk_block_id(i as usize, disk_block_id).unwrap();
                 }
                 // clean up
-                let old_size = self.disk_inode.size as usize;
+                let old_size = self._size();
                 self.disk_inode.size = len as u32;
                 self._clean_at(old_size, len).unwrap();
             }
@@ -166,17 +166,22 @@ impl INode {
         self.disk_inode.size = len as u32;
         Ok(())
     }
+    /// Get the actual size of this inode,
+    /// since size in inode for dir is not real size
+    fn _size(&self) -> usize {
+        match self.disk_inode.type_ {
+            FileType::Dir => self.disk_inode.blocks as usize * BLKSIZE,
+            FileType::File => self.disk_inode.size as usize,
+            _ => unimplemented!(),
+        }
+    }
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
         where F: FnMut(RefMut<Box<Device>>, &BlockRange, usize)
     {
         let fs = self.fs.upgrade().unwrap();
 
-        let size = match self.disk_inode.type_ {
-            FileType::Dir => self.disk_inode.blocks as usize * BLKSIZE,
-            FileType::File => self.disk_inode.size as usize,
-            _ => unimplemented!(),
-        };
+        let size = self._size();
         let iter = BlockIter {
             begin: size.min(begin),
             end: size.min(end),
@@ -232,7 +237,7 @@ impl vfs::INode for INode {
     }
     fn info(&self) -> vfs::Result<vfs::FileInfo> {
         Ok(vfs::FileInfo {
-            size: self.disk_inode.size as usize,
+            size: self._size(),
             mode: 0,
             type_: vfs::FileType::from(self.disk_inode.type_.clone()),
             blocks: self.disk_inode.blocks as usize,

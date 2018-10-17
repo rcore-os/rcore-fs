@@ -1,3 +1,4 @@
+use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write, Seek, SeekFrom};
 use std::boxed::Box;
@@ -27,8 +28,10 @@ impl Device for File {
 }
 
 fn _open_sample_file() -> Rc<SimpleFileSystem> {
-    let file = File::open("sfs.img")
-        .expect("failed to open sfs.img");
+    fs::copy("sfs.img","test.img").expect("failed to open sfs.img");
+    let file = OpenOptions::new()
+        .read(true).write(true).open("test.img")
+        .expect("failed to open test.img");
     SimpleFileSystem::open(Box::new(file))
         .expect("failed to open SFS")
 }
@@ -149,4 +152,16 @@ fn rc_layout() {
     let start = unsafe{ (ptr as *const usize).offset(-2) };
     let ns = unsafe{ &*(start as *const [usize; 2]) };
     assert_eq!(ns, &[1usize, 1]);
+}
+
+// #[test]
+fn kernel_image_file_create(){
+    let sfs = _open_sample_file();
+    let root = sfs.root_inode();
+    let files_count_before = root.borrow().list().unwrap();
+    root.borrow_mut().create("hello2",FileType::File).unwrap();
+    let files_count_after = root.borrow().list().unwrap();
+    assert_eq!(files_count_before+1, files_count_after)
+
+    sfs.sync().unwrap();
 }

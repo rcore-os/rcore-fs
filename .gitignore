@@ -2,4 +2,4 @@
 **/*.rs.bk
 Cargo.lock
 .idea
-/sfs.img
+/*.img
