@@ -96,16 +96,19 @@ impl INode {
         }
     }
     /// Only for Dir
-    fn get_file_inode_id(&self, name: &str) -> Option<INodeId> {
+    fn get_file_inode_and_entry_id(&self, name: &str) -> Option<(INodeId,usize)> {
         (0..self.disk_inode.blocks)
             .map(|i| {
                 use vfs::INode;
                 let mut entry: DiskEntry = unsafe { uninitialized() };
                 self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
-                entry
+                (entry,i)
             })
-            .find(|entry| entry.name.as_ref() == name)
-            .map(|entry| entry.id as INodeId)
+            .find(|(entry,id)| entry.name.as_ref() == name)
+            .map(|(entry,id)| (entry.id as INodeId,id as usize))
+    }
+    fn get_file_inode_id(&self, name: &str) -> Option<INodeId> {
+        self.get_file_inode_and_entry_id(name).map(|(inode_id,entry_id)|{inode_id})
     }
     /// Init dir content. Insert 2 init entries.
     fn init_dir(&mut self, parent: INodeId) -> vfs::Result<()> {
@@ -279,6 +282,30 @@ impl vfs::INode for INode {
 
         Ok(inode)
     }
+    fn unlink(&mut self, name: &str) -> vfs::Result<()> {
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+
+        let inode_and_entry_id = self.get_file_inode_and_entry_id(name);
+        if inode_and_entry_id.is_none() {
+            return Err(());
+        }
+        let (inode_id,entry_id)=inode_and_entry_id.unwrap();
+        let inode = fs.get_inode(inode_id);
+
+        let type_ = inode.borrow().disk_inode.type_;
+        if(type_==FileType::Dir){
+            // only . and ..
+            assert!(inode.borrow().disk_inode.blocks==2);
+        }
+
+        //todo: actually unlink:
+        //1. move the last entry to the original place
+        //2. free the disc space
+
+        unimplemented!();
+    }
     fn lookup(&self, path: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
@@ -322,6 +349,7 @@ impl Drop for INode {
     fn drop(&mut self) {
         use vfs::INode;
         self.sync().expect("failed to sync");
+        //TODO: check nlink and atually remove
     }
 }
 
@@ -488,6 +516,7 @@ impl vfs::FileSystem for SimpleFileSystem {
             use vfs::INode;
             inode.borrow_mut().sync().unwrap();
         }
+        //TODO: drop no ref inode
         Ok(())
     }
 

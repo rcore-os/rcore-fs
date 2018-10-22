@@ -23,6 +23,8 @@ pub trait INode: Debug {
 //    fn reclaim(&mut self) -> Result<()>;
     fn resize(&mut self, len: usize) -> Result<()>;
     fn create(&mut self, name: &str, type_: FileType) -> Result<INodePtr>;
+    // since we do not have link, unlink==remove
+    fn unlink(&mut self, name: &str) -> Result<()>;
     fn lookup(&self, path: &str) -> Result<INodePtr>;
     fn list(&self) -> Result<Vec<String>>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
