@@ -51,6 +51,7 @@ fn open_sample_file() {
 #[test]
 fn create_new_sfs() {
     let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
 }
 
 //#[test]
@@ -74,6 +75,7 @@ fn create_file() {
         type_: FileType::File,
         mode: 0,
         blocks: 0,
+        nlinks: 1,
     });
 
     sfs.sync().unwrap();
@@ -158,10 +160,25 @@ fn rc_layout() {
 fn kernel_image_file_create(){
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
-    let files_count_before = root.borrow().list().unwrap();
+    let files_count_before = root.borrow().list().unwrap().len();
     root.borrow_mut().create("hello2",FileType::File).unwrap();
-    let files_count_after = root.borrow().list().unwrap();
-    assert_eq!(files_count_before+1, files_count_after)
+    let files_count_after = root.borrow().list().unwrap().len();
+    assert_eq!(files_count_before+1, files_count_after);
+
+    sfs.sync().unwrap();
+}
+
+#[test]
+fn nlinks(){
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+    assert_eq!(root.borrow().info().unwrap().nlinks,2);
+    let file1 = root.borrow_mut().create("file1", FileType::File).unwrap();
+    assert_eq!(file1.borrow().info().unwrap().nlinks,1);
+    assert_eq!(root.borrow().info().unwrap().nlinks,2);
+    let dir1 = root.borrow_mut().create("dir1", FileType::Dir).unwrap();
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(root.borrow().info().unwrap().nlinks,3);
 
     sfs.sync().unwrap();
 }

@@ -111,17 +111,18 @@ impl INode {
         self.get_file_inode_and_entry_id(name).map(|(inode_id,entry_id)|{inode_id})
     }
     /// Init dir content. Insert 2 init entries.
-    fn init_dir(&mut self, parent: INodeId) -> vfs::Result<()> {
+    /// This do not init nlinks, please modify the nlinks in the invoker.
+    fn init_dir_entry(&mut self, parent: INodeId) -> vfs::Result<()> {
         use vfs::INode;
+        let fs = self.fs.upgrade().unwrap();
         // Insert entries: '.' '..'
         self._resize(BLKSIZE * 2).unwrap();
         self._write_at(BLKSIZE * 1, DiskEntry {
             id: parent as u32,
             name: Str256::from(".."),
         }.as_buf()).unwrap();
-        let id = self.id as u32;
         self._write_at(BLKSIZE * 0, DiskEntry {
-            id,
+            id: self.id as u32,
             name: Str256::from("."),
         }.as_buf()).unwrap();
         Ok(())
@@ -220,6 +221,13 @@ impl INode {
         }).unwrap();
         Ok(())
     }
+    fn nlinks_inc(&mut self) {
+        self.disk_inode.nlinks+=1;
+    }
+    fn nlinks_dec(&mut self) {
+        assert!(self.disk_inode.nlinks>0);
+        self.disk_inode.nlinks-=1;
+    }
 }
 
 impl vfs::INode for INode {
@@ -244,6 +252,7 @@ impl vfs::INode for INode {
             mode: 0,
             type_: vfs::FileType::from(self.disk_inode.type_.clone()),
             blocks: self.disk_inode.blocks as usize,
+            nlinks: self.disk_inode.nlinks as usize,
         })
     }
     fn sync(&mut self) -> vfs::Result<()> {
@@ -279,6 +288,11 @@ impl vfs::INode for INode {
         };
         self._resize(info.size + BLKSIZE).unwrap();
         self._write_at(info.size, entry.as_buf()).unwrap();
+        inode.borrow_mut().nlinks_inc();
+        if(type_==vfs::FileType::Dir){
+            inode.borrow_mut().nlinks_inc();//for .
+            self.nlinks_inc();//for ..
+        }
 
         Ok(inode)
     }
@@ -421,7 +435,9 @@ impl SimpleFileSystem {
         {
             use vfs::INode;
             let root = sfs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
-            root.borrow_mut().init_dir(BLKN_ROOT).unwrap();
+            root.borrow_mut().init_dir_entry(BLKN_ROOT).unwrap();
+            root.borrow_mut().nlinks_inc();//for .
+            root.borrow_mut().nlinks_inc();//for ..(root's parent is itself)
             root.borrow_mut().sync().unwrap();
         }
 
@@ -490,7 +506,7 @@ impl SimpleFileSystem {
         let id = self.alloc_block().unwrap();
         let disk_inode = Dirty::new_dirty(DiskINode::new_dir());
         let inode = self._new_inode(id, disk_inode);
-        inode.borrow_mut().init_dir(parent).unwrap();
+        inode.borrow_mut().init_dir_entry(parent).unwrap();
         Ok(inode)
     }
 }
