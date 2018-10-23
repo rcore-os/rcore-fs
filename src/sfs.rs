@@ -271,6 +271,7 @@ impl vfs::INode for INode {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
 
         // Ensure the name is not exist
         assert!(self.get_file_inode_id(name).is_none(), "file name exist");
@@ -297,6 +298,8 @@ impl vfs::INode for INode {
         Ok(inode)
     }
     fn unlink(&mut self, name: &str) -> vfs::Result<()> {
+        assert!(name!=".");
+        assert!(name!="..");
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
@@ -313,12 +316,20 @@ impl vfs::INode for INode {
             // only . and ..
             assert!(inode.borrow().disk_inode.blocks==2);
         }
+        inode.borrow_mut().nlinks_dec();
+        if(type_==FileType::Dir){
+            inode.borrow_mut().nlinks_dec();//for .
+            self.nlinks_dec();//for ..
+        }
+        let old_block_count=self.disk_inode.blocks as usize;
+        if(entry_id!=old_block_count - 1){//not last entry
+            let mut entry: DiskEntry = unsafe { uninitialized() };
+            self._read_at((old_block_count - 1) * BLKSIZE, entry.as_buf_mut()).unwrap();
+            self._write_at(entry_id * BLKSIZE, entry.as_buf()).unwrap();
+        }
+        self._resize((old_block_count - 1) * BLKSIZE).unwrap();
 
-        //todo: actually unlink:
-        //1. move the last entry to the original place
-        //2. free the disc space
-
-        unimplemented!();
+        Ok(())
     }
     fn lookup(&self, path: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();

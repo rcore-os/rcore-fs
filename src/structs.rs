@@ -29,6 +29,7 @@ pub struct DiskINode {
     /// one of SYS_TYPE_* above
     pub type_: FileType,
     /// number of hard links to this file
+    /// Note: "." and ".." is counted in this nlinks
     pub nlinks: u16,
     /// number of blocks
     pub blocks: u32,

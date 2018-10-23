@@ -37,6 +37,8 @@ pub struct FileInfo {
     pub mode: u32,
     pub type_: FileType,
     pub blocks: usize,
+    // Note: different from linux, "." and ".." count in nlinks
+    // this is same as original ucore.
     pub nlinks: usize,
 }
 

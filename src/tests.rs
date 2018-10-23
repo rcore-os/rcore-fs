@@ -168,6 +168,18 @@ fn kernel_image_file_create(){
     sfs.sync().unwrap();
 }
 
+// #[test]
+fn kernel_image_file_unlink(){
+    let sfs = _open_sample_file();
+    let root = sfs.root_inode();
+    let files_count_before = root.borrow().list().unwrap().len();
+    root.borrow_mut().unlink("hello");
+    let files_count_after = root.borrow().list().unwrap().len();
+    assert_eq!(files_count_before, files_count_after+1);
+
+    sfs.sync().unwrap();
+}
+
 #[test]
 fn nlinks(){
     let sfs = _create_new_sfs();
@@ -179,6 +191,12 @@ fn nlinks(){
     let dir1 = root.borrow_mut().create("dir1", FileType::Dir).unwrap();
     assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
+    root.borrow_mut().unlink("file1").unwrap();
+    assert_eq!(file1.borrow().info().unwrap().nlinks,0);
+    assert_eq!(root.borrow().info().unwrap().nlinks,3);
+    root.borrow_mut().unlink("dir1").unwrap();
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,0);
+    assert_eq!(root.borrow().info().unwrap().nlinks,2);
 
     sfs.sync().unwrap();
 }
