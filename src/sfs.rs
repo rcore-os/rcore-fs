@@ -127,6 +127,19 @@ impl INode {
         }.as_buf()).unwrap();
         Ok(())
     }
+    /// remove a page in middle of file and insert the last page here, useful for dirent remove
+    /// should be only used in unlink
+    fn remove_dirent_page(&mut self, id: usize) -> vfs::Result<()> {
+        assert!(id < self.disk_inode.blocks as usize);
+        let fs = self.fs.upgrade().unwrap();
+        let to_remove=self.get_disk_block_id(id).unwrap();
+        let current_last=self.get_disk_block_id(self.disk_inode.blocks as usize -1).unwrap();
+        self.set_disk_block_id(id,current_last).unwrap();
+        self.disk_inode.blocks -= 1;
+        self.disk_inode.size -= BLKSIZE as u32;
+        fs.free_block(to_remove);
+        Ok(())
+    }
     /// Resize content size, no matter what type it is.
     fn _resize(&mut self, len: usize) -> vfs::Result<()> {
         assert!(len <= MAX_FILE_SIZE, "file size exceed limit");
@@ -321,13 +334,7 @@ impl vfs::INode for INode {
             inode.borrow_mut().nlinks_dec();//for .
             self.nlinks_dec();//for ..
         }
-        let old_block_count=self.disk_inode.blocks as usize;
-        if(entry_id!=old_block_count - 1){//not last entry
-            let mut entry: DiskEntry = unsafe { uninitialized() };
-            self._read_at((old_block_count - 1) * BLKSIZE, entry.as_buf_mut()).unwrap();
-            self._write_at(entry_id * BLKSIZE, entry.as_buf()).unwrap();
-        }
-        self._resize((old_block_count - 1) * BLKSIZE).unwrap();
+        self.remove_dirent_page(entry_id);
 
         Ok(())
     }
@@ -374,7 +381,12 @@ impl Drop for INode {
     fn drop(&mut self) {
         use vfs::INode;
         self.sync().expect("failed to sync");
-        //TODO: check nlink and atually remove
+        if(self.disk_inode.nlinks<=0){
+            let fs = self.fs.upgrade().unwrap();
+            self._resize(0);
+            self.disk_inode.sync();
+            fs.free_block(self.id);
+        }
     }
 }
 
@@ -471,8 +483,15 @@ impl SimpleFileSystem {
         let id = self.free_map.borrow_mut().alloc();
         if id.is_some() {
             self.super_block.borrow_mut().unused_blocks -= 1;    // will panic if underflow
+            id
+        }else{
+            self.flush_unreachable_inodes();
+            let id = self.free_map.borrow_mut().alloc();
+            if id.is_some() {
+                self.super_block.borrow_mut().unused_blocks -= 1;
+            }
+            id
         }
-        id
     }
     /// Free a block
     fn free_block(&self, block_id: usize) {
@@ -520,6 +539,24 @@ impl SimpleFileSystem {
         inode.borrow_mut().init_dir_entry(parent).unwrap();
         Ok(inode)
     }
+    fn flush_unreachable_inodes(&self){
+        let mut inodes = self.inodes.borrow_mut();
+        let ids: Vec<_> = inodes.keys().cloned().collect();
+        for id in ids.iter() {
+            let mut should_remove=false;
+            // Since non-lexical-lifetime is not stable...
+            {
+                let inodeRc=inodes.get(&id).unwrap();
+                if Rc::strong_count(inodeRc)<=1 {
+                    use vfs::INode;
+                    if inodeRc.borrow().info().unwrap().nlinks==0 {
+                        should_remove=true;
+                    }
+                }
+            }
+            inodes.remove(&id);
+        }
+    }
 }
 
 impl vfs::FileSystem for SimpleFileSystem {
@@ -543,7 +580,7 @@ impl vfs::FileSystem for SimpleFileSystem {
             use vfs::INode;
             inode.borrow_mut().sync().unwrap();
         }
-        //TODO: drop no ref inode
+        self.flush_unreachable_inodes();
         Ok(())
     }
 

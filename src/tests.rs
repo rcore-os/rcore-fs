@@ -173,9 +173,10 @@ fn kernel_image_file_unlink(){
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
     let files_count_before = root.borrow().list().unwrap().len();
-    root.borrow_mut().unlink("hello");
+    root.borrow_mut().unlink("hello").unwrap();
     let files_count_after = root.borrow().list().unwrap().len();
     assert_eq!(files_count_before, files_count_after+1);
+    assert!(root.borrow().lookup("hello").is_err());
 
     sfs.sync().unwrap();
 }
