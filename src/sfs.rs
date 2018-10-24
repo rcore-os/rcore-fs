@@ -136,7 +136,8 @@ impl INode {
         let current_last=self.get_disk_block_id(self.disk_inode.blocks as usize -1).unwrap();
         self.set_disk_block_id(id,current_last).unwrap();
         self.disk_inode.blocks -= 1;
-        self.disk_inode.size -= BLKSIZE as u32;
+        let new_size=self.disk_inode.blocks as usize * BLKSIZE;
+        self._set_size(new_size);
         fs.free_block(to_remove);
         Ok(())
     }
@@ -162,7 +163,7 @@ impl INode {
                 }
                 // clean up
                 let old_size = self._size();
-                self.disk_inode.size = len as u32;
+                self._set_size(len);
                 self._clean_at(old_size, len).unwrap();
             }
             Ordering::Less => {
@@ -180,7 +181,7 @@ impl INode {
                 self.disk_inode.blocks = blocks;
             }
         }
-        self.disk_inode.size = len as u32;
+        self._set_size(len);
         Ok(())
     }
     /// Get the actual size of this inode,
@@ -191,6 +192,15 @@ impl INode {
             FileType::File => self.disk_inode.size as usize,
             _ => unimplemented!(),
         }
+    }
+    /// Set the ucore compat size of this inode,
+    /// Size in inode for dir is size of entries
+    fn _set_size(&mut self,len: usize) {
+        self.disk_inode.size=match self.disk_inode.type_ {
+            FileType::Dir => self.disk_inode.blocks as usize * DIRENT_SIZE,
+            FileType::File => len,
+            _ => unimplemented!(),
+        } as u32
     }
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
@@ -259,9 +269,14 @@ impl vfs::INode for INode {
         assert_eq!(self.disk_inode.type_, FileType::File, "write_at is only available on file");
         self._write_at(offset, buf)
     }
+    /// the size returned here is logical size(entry num for directory), not the disk space used.
     fn info(&self) -> vfs::Result<vfs::FileInfo> {
         Ok(vfs::FileInfo {
-            size: self._size(),
+            size: match self.disk_inode.type_ {
+                FileType::File => self.disk_inode.size as usize,
+                FileType::Dir => self.disk_inode.blocks as usize,
+                _ => unimplemented!(),
+            },
             mode: 0,
             type_: vfs::FileType::from(self.disk_inode.type_.clone()),
             blocks: self.disk_inode.blocks as usize,
@@ -300,8 +315,9 @@ impl vfs::INode for INode {
             id: inode.borrow().id as u32,
             name: Str256::from(name),
         };
-        self._resize(info.size + BLKSIZE).unwrap();
-        self._write_at(info.size, entry.as_buf()).unwrap();
+        let old_size=self._size();
+        self._resize(old_size + BLKSIZE).unwrap();
+        self._write_at(old_size, entry.as_buf()).unwrap();
         inode.borrow_mut().nlinks_inc();
         if(type_==vfs::FileType::Dir){
             inode.borrow_mut().nlinks_inc();//for .

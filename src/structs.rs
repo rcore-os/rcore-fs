@@ -177,6 +177,8 @@ pub const BLKBITS: usize = BLKSIZE * 8;
 pub const ENTRY_SIZE: usize = 4;
 /// number of entries in a block
 pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
+/// size of a dirent used in the size field
+pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1;
 
 /// file types
 #[repr(u16)]
