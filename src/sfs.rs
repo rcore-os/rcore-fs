@@ -4,6 +4,7 @@ use core::cell::{RefCell, RefMut};
 use core::mem::{uninitialized, size_of};
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
+use core::any::Any;
 use dirty::Dirty;
 use structs::*;
 use vfs::{self, Device};
@@ -354,6 +355,25 @@ impl vfs::INode for INode {
 
         Ok(())
     }
+    fn link(&mut self, name: &str, other:&mut vfs::INode) -> vfs::Result<()> {
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
+        assert!(self.get_file_inode_id(name).is_none(), "file name exist");
+        let child = other.downcast_mut::<INode>().unwrap();
+        assert!(Rc::ptr_eq(&fs,&child.fs.upgrade().unwrap()));
+        assert!(child.info().unwrap().type_!=vfs::FileType::Dir);
+        let entry = DiskEntry {
+            id: child.id as u32,
+            name: Str256::from(name),
+        };
+        let old_size=self._size();
+        self._resize(old_size + BLKSIZE).unwrap();
+        self._write_at(old_size, entry.as_buf()).unwrap();
+        child.nlinks_inc();
+        Ok(())
+    }
     fn lookup(&self, path: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
@@ -389,6 +409,12 @@ impl vfs::INode for INode {
     }
     fn fs(&self) -> Weak<vfs::FileSystem> {
         self.fs.clone()
+    }
+    fn as_any_ref(&self) -> &Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut Any {
+        self
     }
 }
 

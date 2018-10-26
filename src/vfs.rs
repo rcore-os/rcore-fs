@@ -3,6 +3,7 @@ use core::cell::RefCell;
 use core::mem::size_of;
 use core;
 use core::fmt::Debug;
+use core::any::Any;
 
 /// Interface for FS to read & write
 ///     TODO: use std::io::{Read, Write}
@@ -12,7 +13,7 @@ pub trait Device {
 }
 
 /// ﻿Abstract operations on a inode.
-pub trait INode: Debug {
+pub trait INode: Debug + Any {
     fn open(&mut self, flags: u32) -> Result<()>;
     fn close(&mut self) -> Result<()>;
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
@@ -23,12 +24,28 @@ pub trait INode: Debug {
 //    fn reclaim(&mut self) -> Result<()>;
     fn resize(&mut self, len: usize) -> Result<()>;
     fn create(&mut self, name: &str, type_: FileType) -> Result<INodePtr>;
-    // since we do not have link, unlink==remove
     fn unlink(&mut self, name: &str) -> Result<()>;
+    /// user of the vfs api should call borrow_mut by itself
+    fn link(&mut self, name: &str, other:&mut INode) -> Result<()>;
     fn lookup(&self, path: &str) -> Result<INodePtr>;
     fn list(&self) -> Result<Vec<String>>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
     fn fs(&self) -> Weak<FileSystem>;
+    /// this is used to implement dynamics cast
+    /// simply return self in the implement of the function
+    fn as_any_ref(&self) -> &Any;
+    /// this is used to implement dynamics cast
+    /// simply return self in the implement of the function
+    fn as_any_mut(&mut self) -> &mut Any;
+}
+
+impl INode{
+    pub fn downcast_ref<T:INode>(&self) -> Option<&T> {
+        self.as_any_ref().downcast_ref::<T>()
+    }
+    pub fn downcast_mut<T:INode>(&mut self) -> Option<&mut T> {
+        self.as_any_mut().downcast_mut::<T>()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

@@ -181,6 +181,21 @@ fn kernel_image_file_unlink(){
     sfs.sync().unwrap();
 }
 
+
+#[test]
+fn hard_link(){
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+    let file1 = root.borrow_mut().create("file1", FileType::File).unwrap();
+    use core::ops::DerefMut;
+    root.borrow_mut().link("file2",file1.borrow_mut().deref_mut()).unwrap();
+    let file2 = root.borrow_mut().lookup("file2").unwrap();
+    file1.borrow_mut().resize(100);
+    assert_eq!(file2.borrow().info().unwrap().size,100);
+
+    sfs.sync().unwrap();
+}
+
 #[test]
 fn nlinks(){
     let sfs = _create_new_sfs();
@@ -192,8 +207,17 @@ fn nlinks(){
     let dir1 = root.borrow_mut().create("dir1", FileType::Dir).unwrap();
     assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
+    use core::ops::DerefMut;
+    dir1.borrow_mut().link("file2",file1.borrow_mut().deref_mut()).unwrap();
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(root.borrow().info().unwrap().nlinks,3);
+    assert_eq!(file1.borrow().info().unwrap().nlinks,2);
     root.borrow_mut().unlink("file1").unwrap();
+    assert_eq!(file1.borrow().info().unwrap().nlinks,1);
+    assert_eq!(root.borrow().info().unwrap().nlinks,3);
+    dir1.borrow_mut().unlink("file2").unwrap();
     assert_eq!(file1.borrow().info().unwrap().nlinks,0);
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
     root.borrow_mut().unlink("dir1").unwrap();
     assert_eq!(dir1.borrow().info().unwrap().nlinks,0);
