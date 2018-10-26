@@ -396,6 +396,14 @@ impl vfs::INode for INode {
             _ => unimplemented!(),
         }
     }
+    fn get_entry(&self,id: usize) -> vfs::Result<String> {
+        assert_eq!(self.disk_inode.type_, FileType::Dir);
+        assert!(id<self.disk_inode.blocks as usize);
+        use vfs::INode;
+        let mut entry: DiskEntry = unsafe { uninitialized() };
+        self._read_at(id as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
+        Ok(String::from(entry.name.as_ref()))
+    }
     fn list(&self) -> vfs::Result<Vec<String>> {
         assert_eq!(self.disk_inode.type_, FileType::Dir);
 

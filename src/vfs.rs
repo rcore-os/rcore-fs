@@ -29,6 +29,9 @@ pub trait INode: Debug + Any {
     fn link(&mut self, name: &str, other:&mut INode) -> Result<()>;
     fn lookup(&self, path: &str) -> Result<INodePtr>;
     fn list(&self) -> Result<Vec<String>>;
+    /// like list()[id]
+    /// only get one item in list, often faster than list
+    fn get_entry(&self,id: usize) -> Result<String>;
 //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
     fn fs(&self) -> Weak<FileSystem>;
     /// this is used to implement dynamics cast

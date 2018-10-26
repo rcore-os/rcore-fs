@@ -54,7 +54,7 @@ fn create_new_sfs() {
     let root = sfs.root_inode();
 }
 
-//#[test]
+// #[test]
 fn print_root() {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
@@ -62,6 +62,9 @@ fn print_root() {
 
     let files = root.borrow().list().unwrap();
     println!("{:?}", files);
+    assert_eq!(files[3],root.borrow().get_entry(3).unwrap());
+
+    sfs.sync().unwrap();
 }
 
 #[test]
