@@ -28,6 +28,8 @@ pub trait INode: Debug + Any {
     /// user of the vfs api should call borrow_mut by itself
     fn link(&mut self, name: &str, other:&mut INode) -> Result<()>;
     fn lookup(&self, path: &str) -> Result<INodePtr>;
+    /// lookup with only one layer
+    fn find(&self, name: &str) -> Result<INodePtr>;
     fn list(&self) -> Result<Vec<String>>;
     /// like list()[id]
     /// only get one item in list, often faster than list

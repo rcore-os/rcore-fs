@@ -396,6 +396,17 @@ impl vfs::INode for INode {
             _ => unimplemented!(),
         }
     }
+    fn find(&self, name: &str) -> vfs::Result<Ptr<vfs::INode>> {
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        let inode_id = self.get_file_inode_id(name);
+        if inode_id.is_none() {
+            return Err(());
+        }
+        let inode = fs.get_inode(inode_id.unwrap());
+        Ok(inode)
+    }
     fn get_entry(&self,id: usize) -> vfs::Result<String> {
         assert_eq!(self.disk_inode.type_, FileType::Dir);
         assert!(id<self.disk_inode.blocks as usize);
