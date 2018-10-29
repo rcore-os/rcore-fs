@@ -27,10 +27,9 @@ pub trait INode: Debug + Any {
     fn unlink(&mut self, name: &str) -> Result<()>;
     /// user of the vfs api should call borrow_mut by itself
     fn link(&mut self, name: &str, other:&mut INode) -> Result<()>;
-    fn lookup(&self, path: &str) -> Result<INodePtr>;
+    // fn lookup(&self, path: &str) -> Result<INodePtr>;
     /// lookup with only one layer
     fn find(&self, name: &str) -> Result<INodePtr>;
-    fn list(&self) -> Result<Vec<String>>;
     /// like list()[id]
     /// only get one item in list, often faster than list
     fn get_entry(&self,id: usize) -> Result<String>;
@@ -51,10 +50,42 @@ impl INode{
     pub fn downcast_mut<T:INode>(&mut self) -> Option<&mut T> {
         self.as_any_mut().downcast_mut::<T>()
     }
+    pub fn list(&self) -> Result<Vec<String>> {
+        let info=self.info().unwrap();
+        assert_eq!(info.type_, FileType::Dir);
+        Ok((0..info.size).map(|i|{
+            self.get_entry(i).unwrap()
+        }).collect())
+    }
+    pub fn lookup(&self, path: &str) -> Result<INodePtr> {
+        if(self.info().unwrap().type_ != FileType::Dir){
+            return Err(())
+        }
+        let mut result=self.find(".").unwrap();
+        let mut rest_path=path;
+        while rest_path != "" {
+            if(result.borrow().info().unwrap().type_ != FileType::Dir){
+                return Err(())
+            }
+            let mut name;
+            match rest_path.find('/') {
+                None => {name=rest_path; rest_path=""},
+                Some(pos) => {name=&rest_path[0..pos]; rest_path=&rest_path[pos + 1..]},
+            };
+            let found=result.borrow().find(name);
+            match found {
+                Err(_) => return Err(()),
+                Ok(inode) => result=inode,
+            };
+        }
+        Ok(result)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct FileInfo {
+    // Note: for normal file size is the actuate file size
+    // for directory this is count of dirent.
     pub size: usize,
     pub mode: u32,
     pub type_: FileType,

@@ -374,28 +374,6 @@ impl vfs::INode for INode {
         child.nlinks_inc();
         Ok(())
     }
-    fn lookup(&self, path: &str) -> vfs::Result<Ptr<vfs::INode>> {
-        let fs = self.fs.upgrade().unwrap();
-        let info = self.info().unwrap();
-        assert_eq!(info.type_, vfs::FileType::Dir);
-
-        let (name, rest_path) = match path.find('/') {
-            None => (path, ""),
-            Some(pos) => (&path[0..pos], &path[pos + 1..]),
-        };
-        let inode_id = self.get_file_inode_id(name);
-        if inode_id.is_none() {
-            return Err(());
-        }
-        let inode = fs.get_inode(inode_id.unwrap());
-
-        let type_ = inode.borrow().disk_inode.type_;
-        match type_ {
-            FileType::File => if rest_path == "" { Ok(inode) } else { Err(()) },
-            FileType::Dir => if rest_path == "" { Ok(inode) } else { inode.borrow().lookup(rest_path) },
-            _ => unimplemented!(),
-        }
-    }
     fn find(&self, name: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
@@ -414,17 +392,6 @@ impl vfs::INode for INode {
         let mut entry: DiskEntry = unsafe { uninitialized() };
         self._read_at(id as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
         Ok(String::from(entry.name.as_ref()))
-    }
-    fn list(&self) -> vfs::Result<Vec<String>> {
-        assert_eq!(self.disk_inode.type_, FileType::Dir);
-
-        Ok((0..self.disk_inode.blocks)
-            .map(|i| {
-                use vfs::INode;
-                let mut entry: DiskEntry = unsafe { uninitialized() };
-                self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
-                String::from(entry.name.as_ref())
-            }).collect())
     }
     fn fs(&self) -> Weak<vfs::FileSystem> {
         self.fs.clone()
