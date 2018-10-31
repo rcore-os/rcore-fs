@@ -31,3 +31,28 @@ mod tests;
 pub use sfs::*;
 pub use vfs::*;
 pub use blocked_device::BlockedDevice;
+
+#[cfg(any(test, feature = "std"))]
+pub mod std_impl {
+    use std::fs::{File, OpenOptions};
+    use std::io::{Read, Write, Seek, SeekFrom};
+    use super::Device;
+
+    impl Device for File {
+        fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
+            let offset = offset as u64;
+            match self.seek(SeekFrom::Start(offset)) {
+                Ok(real_offset) if real_offset == offset => self.read(buf).ok(),
+                _ => None,
+            }
+        }
+
+        fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
+            let offset = offset as u64;
+            match self.seek(SeekFrom::Start(offset)) {
+                Ok(real_offset) if real_offset == offset => self.write(buf).ok(),
+                _ => None,
+            }
+        }
+    }
+}

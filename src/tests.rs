@@ -9,24 +9,6 @@ use std::rc::Rc;
 use std::mem::uninitialized;
 use super::structs::{DiskEntry, AsBuf};
 
-impl Device for File {
-    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {
-        let offset = offset as u64;
-        match self.seek(SeekFrom::Start(offset)) {
-            Ok(real_offset) if real_offset == offset => self.read(buf).ok(),
-            _ => None,
-        }
-    }
-
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize> {
-        let offset = offset as u64;
-        match self.seek(SeekFrom::Start(offset)) {
-            Ok(real_offset) if real_offset == offset => self.write(buf).ok(),
-            _ => None,
-        }
-    }
-}
-
 fn _open_sample_file() -> Rc<SimpleFileSystem> {
     fs::copy("sfs.img","test.img").expect("failed to open sfs.img");
     let file = OpenOptions::new()
