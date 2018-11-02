@@ -374,6 +374,37 @@ impl vfs::INode for INode {
         child.nlinks_inc();
         Ok(())
     }
+    fn rename(&mut self, old_name: &str, new_name: &str) -> vfs::Result<()>{
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
+
+        let inode_and_entry_id = self.get_file_inode_and_entry_id(old_name);
+        if inode_and_entry_id.is_none() {
+            return Err(());
+        }
+        let (_,entry_id)=inode_and_entry_id.unwrap();
+
+        // in place modify name
+        let mut entry: DiskEntry = unsafe { uninitialized() };
+        let entry_pos=entry_id as usize * BLKSIZE;
+        self._read_at(entry_pos, entry.as_buf_mut()).unwrap();
+        entry.name=Str256::from(new_name);
+        self._write_at(entry_pos, entry.as_buf()).unwrap();
+
+        Ok(())
+    }
+    fn move_(&mut self, old_name: &str,target:&mut vfs::INode, new_name: &str) -> vfs::Result<()>{
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
+        let dest = target.downcast_mut::<INode>().unwrap();
+        assert!(Rc::ptr_eq(&fs,&dest.fs.upgrade().unwrap()));
+        assert!(dest.info().unwrap().type_!=vfs::FileType::Dir);
+        assert!(dest.info().unwrap().nlinks>0);
+        unimplemented!()
+    }
     fn find(&self, name: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();

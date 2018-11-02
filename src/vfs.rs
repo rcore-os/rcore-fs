@@ -20,14 +20,14 @@ pub trait INode: Debug + Any {
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
     fn info(&self) -> Result<FileInfo>;
     fn sync(&mut self) -> Result<()>;
-//    fn name_file(&mut self) -> Result<()>;
-//    fn reclaim(&mut self) -> Result<()>;
     fn resize(&mut self, len: usize) -> Result<()>;
     fn create(&mut self, name: &str, type_: FileType) -> Result<INodePtr>;
     fn unlink(&mut self, name: &str) -> Result<()>;
     /// user of the vfs api should call borrow_mut by itself
     fn link(&mut self, name: &str, other:&mut INode) -> Result<()>;
-    // fn lookup(&self, path: &str) -> Result<INodePtr>;
+    fn rename(&mut self, old_name: &str, new_name: &str) -> Result<()>;
+    // when self==target use rename instead since it's not possible to have two mut_ref at the same time.
+    fn move_(&mut self, old_name: &str,target:&mut INode, new_name: &str) -> Result<()>;
     /// lookup with only one layer
     fn find(&self, name: &str) -> Result<INodePtr>;
     /// like list()[id]
