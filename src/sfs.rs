@@ -379,6 +379,8 @@ impl vfs::INode for INode {
         assert_eq!(info.type_, vfs::FileType::Dir);
         assert!(info.nlinks>0);
 
+        assert!(self.get_file_inode_id(new_name).is_none(), "file name exist");
+
         let inode_and_entry_id = self.get_file_inode_and_entry_id(old_name);
         if inode_and_entry_id.is_none() {
             return Err(());
@@ -401,9 +403,34 @@ impl vfs::INode for INode {
         assert!(info.nlinks>0);
         let dest = target.downcast_mut::<INode>().unwrap();
         assert!(Rc::ptr_eq(&fs,&dest.fs.upgrade().unwrap()));
-        assert!(dest.info().unwrap().type_!=vfs::FileType::Dir);
+        assert!(dest.info().unwrap().type_==vfs::FileType::Dir);
         assert!(dest.info().unwrap().nlinks>0);
-        unimplemented!()
+
+        assert!(dest.get_file_inode_id(new_name).is_none(), "file name exist");
+
+        let inode_and_entry_id = self.get_file_inode_and_entry_id(old_name);
+        if inode_and_entry_id.is_none() {
+            return Err(());
+        }
+        let (inode_id,entry_id)=inode_and_entry_id.unwrap();
+        let inode = fs.get_inode(inode_id);
+
+        let entry = DiskEntry {
+            id: inode_id as u32,
+            name: Str256::from(new_name),
+        };
+        let old_size=dest._size();
+        dest._resize(old_size + BLKSIZE).unwrap();
+        dest._write_at(old_size, entry.as_buf()).unwrap();
+
+        self.remove_dirent_page(entry_id);
+
+        if(inode.borrow().info().unwrap().type_==vfs::FileType::Dir){
+            self.nlinks_dec();
+            dest.nlinks_inc();
+        }
+
+        Ok(())
     }
     fn find(&self, name: &str) -> vfs::Result<Ptr<vfs::INode>> {
         let fs = self.fs.upgrade().unwrap();
@@ -613,7 +640,9 @@ impl SimpleFileSystem {
                     }
                 }
             }
-            inodes.remove(&id);
+            if(should_remove){
+                inodes.remove(&id);
+            }
         }
     }
 }

@@ -150,6 +150,7 @@ fn kernel_image_file_create(){
     root.borrow_mut().create("hello2",FileType::File).unwrap();
     let files_count_after = root.borrow().list().unwrap().len();
     assert_eq!(files_count_before+1, files_count_after);
+    assert!(root.borrow().lookup("hello2").is_ok());
 
     sfs.sync().unwrap();
 }
@@ -177,6 +178,26 @@ fn kernel_image_file_rename(){
     let files_count_after = root.borrow().list().unwrap().len();
     assert_eq!(files_count_before, files_count_after);
     assert!(root.borrow().lookup("hello").is_err());
+    assert!(root.borrow().lookup("hello2").is_ok());
+
+    sfs.sync().unwrap();
+}
+
+// #[test]
+fn kernel_image_file_move(){
+    use core::ops::DerefMut;
+    let sfs = _open_sample_file();
+    let root = sfs.root_inode();
+    let files_count_before = root.borrow().list().unwrap().len();
+    root.borrow_mut().unlink("divzero").unwrap();
+    let rust_dir = root.borrow_mut().create("rust", FileType::Dir).unwrap();
+    root.borrow_mut().move_("hello",rust_dir.borrow_mut().deref_mut(),"hello_world").unwrap();
+    let files_count_after = root.borrow().list().unwrap().len();
+    assert_eq!(files_count_before, files_count_after+1);
+    assert!(root.borrow().lookup("hello").is_err());
+    assert!(root.borrow().lookup("divzero").is_err());
+    assert!(root.borrow().lookup("rust").is_ok());
+    assert!(rust_dir.borrow().lookup("hello_world").is_ok());
 
     sfs.sync().unwrap();
 }
@@ -197,33 +218,118 @@ fn hard_link(){
 
 #[test]
 fn nlinks(){
+    use core::ops::DerefMut;
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
+    // -root
     assert_eq!(root.borrow().info().unwrap().nlinks,2);
+
     let file1 = root.borrow_mut().create("file1", FileType::File).unwrap();
+    // -root
+    //   `-file1 <f1>
     assert_eq!(file1.borrow().info().unwrap().nlinks,1);
     assert_eq!(root.borrow().info().unwrap().nlinks,2);
+
     let dir1 = root.borrow_mut().create("dir1", FileType::Dir).unwrap();
+    // -root
+    //   +-dir1
+    //   `-file1 <f1>
     assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
+
     root.borrow_mut().rename("dir1", "dir_1").unwrap();
+    // -root
+    //   +-dir_1
+    //   `-file1 <f1>
     assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
-    use core::ops::DerefMut;
-    dir1.borrow_mut().link("file2",file1.borrow_mut().deref_mut()).unwrap();
+
+    dir1.borrow_mut().link("file1_",file1.borrow_mut().deref_mut()).unwrap();
+    // -root
+    //   +-dir_1
+    //   |  `-file1_ <f1>
+    //   `-file1 <f1>
     assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
     assert_eq!(file1.borrow().info().unwrap().nlinks,2);
-    root.borrow_mut().unlink("file1").unwrap();
-    assert_eq!(file1.borrow().info().unwrap().nlinks,1);
+
+    let dir2 = root.borrow_mut().create("dir2", FileType::Dir).unwrap();
+    // -root
+    //   +-dir_1
+    //   |  `-file1_ <f1>
+    //   +-dir2
+    //   `-file1 <f1>
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,2);
+    assert_eq!(root.borrow().info().unwrap().nlinks,4);
+    assert_eq!(file1.borrow().info().unwrap().nlinks,2);
+
+    root.borrow_mut().rename("file1","file_1").unwrap();
+    // -root
+    //   +-dir_1
+    //   |  `-file1_ <f1>
+    //   +-dir2
+    //   `-file_1 <f1>
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,2);
+    assert_eq!(root.borrow().info().unwrap().nlinks,4);
+    assert_eq!(file1.borrow().info().unwrap().nlinks,2);
+
+    root.borrow_mut().move_("file_1",dir2.borrow_mut().deref_mut(),"file__1").unwrap();
+    // -root
+    //   +-dir_1
+    //   |  `-file1_ <f1>
+    //   `-dir2
+    //      `-file__1 <f1>
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,2);
+    assert_eq!(root.borrow().info().unwrap().nlinks,4);
+    assert_eq!(file1.borrow().info().unwrap().nlinks,2);
+
+    root.borrow_mut().move_("dir_1",dir2.borrow_mut().deref_mut(),"dir__1").unwrap();
+    // -root
+    //   `-dir2
+    //      +-dir__1
+    //      |  `-file1_ <f1>
+    //      `-file__1 <f1>
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,3);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
-    dir1.borrow_mut().unlink("file2").unwrap();
+    assert_eq!(file1.borrow().info().unwrap().nlinks,2);
+
+    dir2.borrow_mut().unlink("file__1").unwrap();
+    // -root
+    //   `-dir2
+    //      `-dir__1
+    //         `-file1_ <f1>
+    assert_eq!(file1.borrow().info().unwrap().nlinks,1);
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,3);
+    assert_eq!(root.borrow().info().unwrap().nlinks,3);
+
+    dir1.borrow_mut().unlink("file1_").unwrap();
+    // -root
+    //   `-dir2
+    //      `-dir__1
     assert_eq!(file1.borrow().info().unwrap().nlinks,0);
     assert_eq!(dir1.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,3);
     assert_eq!(root.borrow().info().unwrap().nlinks,3);
-    root.borrow_mut().unlink("dir_1").unwrap();
+
+    dir2.borrow_mut().unlink("dir__1").unwrap();
+    // -root
+    //   `-dir2
+    assert_eq!(file1.borrow().info().unwrap().nlinks,0);
+    assert_eq!(dir1.borrow().info().unwrap().nlinks,0);
+    assert_eq!(root.borrow().info().unwrap().nlinks,3);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,2);
+
+    root.borrow_mut().unlink("dir2").unwrap();
+    // -root
+    assert_eq!(file1.borrow().info().unwrap().nlinks,0);
     assert_eq!(dir1.borrow().info().unwrap().nlinks,0);
     assert_eq!(root.borrow().info().unwrap().nlinks,2);
+    assert_eq!(dir2.borrow().info().unwrap().nlinks,0);
 
     sfs.sync().unwrap();
 }
