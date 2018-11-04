@@ -29,6 +29,7 @@ pub struct DiskINode {
     /// one of SYS_TYPE_* above
     pub type_: FileType,
     /// number of hard links to this file
+    /// Note: "." and ".." is counted in this nlinks
     pub nlinks: u16,
     /// number of blocks
     pub blocks: u32,
@@ -176,6 +177,8 @@ pub const BLKBITS: usize = BLKSIZE * 8;
 pub const ENTRY_SIZE: usize = 4;
 /// number of entries in a block
 pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
+/// size of a dirent used in the size field
+pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1;
 
 /// file types
 #[repr(u16)]

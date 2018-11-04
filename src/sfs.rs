@@ -4,6 +4,7 @@ use core::cell::{RefCell, RefMut};
 use core::mem::{uninitialized, size_of};
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
+use core::any::Any;
 use dirty::Dirty;
 use structs::*;
 use vfs::{self, Device};
@@ -96,31 +97,49 @@ impl INode {
         }
     }
     /// Only for Dir
-    fn get_file_inode_id(&self, name: &str) -> Option<INodeId> {
+    fn get_file_inode_and_entry_id(&self, name: &str) -> Option<(INodeId,usize)> {
         (0..self.disk_inode.blocks)
             .map(|i| {
                 use vfs::INode;
                 let mut entry: DiskEntry = unsafe { uninitialized() };
                 self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
-                entry
+                (entry,i)
             })
-            .find(|entry| entry.name.as_ref() == name)
-            .map(|entry| entry.id as INodeId)
+            .find(|(entry,id)| entry.name.as_ref() == name)
+            .map(|(entry,id)| (entry.id as INodeId,id as usize))
+    }
+    fn get_file_inode_id(&self, name: &str) -> Option<INodeId> {
+        self.get_file_inode_and_entry_id(name).map(|(inode_id,entry_id)|{inode_id})
     }
     /// Init dir content. Insert 2 init entries.
-    fn init_dir(&mut self, parent: INodeId) -> vfs::Result<()> {
+    /// This do not init nlinks, please modify the nlinks in the invoker.
+    fn init_dir_entry(&mut self, parent: INodeId) -> vfs::Result<()> {
         use vfs::INode;
+        let fs = self.fs.upgrade().unwrap();
         // Insert entries: '.' '..'
         self._resize(BLKSIZE * 2).unwrap();
         self._write_at(BLKSIZE * 1, DiskEntry {
             id: parent as u32,
             name: Str256::from(".."),
         }.as_buf()).unwrap();
-        let id = self.id as u32;
         self._write_at(BLKSIZE * 0, DiskEntry {
-            id,
+            id: self.id as u32,
             name: Str256::from("."),
         }.as_buf()).unwrap();
+        Ok(())
+    }
+    /// remove a page in middle of file and insert the last page here, useful for dirent remove
+    /// should be only used in unlink
+    fn remove_dirent_page(&mut self, id: usize) -> vfs::Result<()> {
+        assert!(id < self.disk_inode.blocks as usize);
+        let fs = self.fs.upgrade().unwrap();
+        let to_remove=self.get_disk_block_id(id).unwrap();
+        let current_last=self.get_disk_block_id(self.disk_inode.blocks as usize -1).unwrap();
+        self.set_disk_block_id(id,current_last).unwrap();
+        self.disk_inode.blocks -= 1;
+        let new_size=self.disk_inode.blocks as usize * BLKSIZE;
+        self._set_size(new_size);
+        fs.free_block(to_remove);
         Ok(())
     }
     /// Resize content size, no matter what type it is.
@@ -145,7 +164,7 @@ impl INode {
                 }
                 // clean up
                 let old_size = self._size();
-                self.disk_inode.size = len as u32;
+                self._set_size(len);
                 self._clean_at(old_size, len).unwrap();
             }
             Ordering::Less => {
@@ -163,7 +182,7 @@ impl INode {
                 self.disk_inode.blocks = blocks;
             }
         }
-        self.disk_inode.size = len as u32;
+        self._set_size(len);
         Ok(())
     }
     /// Get the actual size of this inode,
@@ -174,6 +193,15 @@ impl INode {
             FileType::File => self.disk_inode.size as usize,
             _ => unimplemented!(),
         }
+    }
+    /// Set the ucore compat size of this inode,
+    /// Size in inode for dir is size of entries
+    fn _set_size(&mut self,len: usize) {
+        self.disk_inode.size=match self.disk_inode.type_ {
+            FileType::Dir => self.disk_inode.blocks as usize * DIRENT_SIZE,
+            FileType::File => len,
+            _ => unimplemented!(),
+        } as u32
     }
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
@@ -217,6 +245,13 @@ impl INode {
         }).unwrap();
         Ok(())
     }
+    fn nlinks_inc(&mut self) {
+        self.disk_inode.nlinks+=1;
+    }
+    fn nlinks_dec(&mut self) {
+        assert!(self.disk_inode.nlinks>0);
+        self.disk_inode.nlinks-=1;
+    }
 }
 
 impl vfs::INode for INode {
@@ -235,12 +270,18 @@ impl vfs::INode for INode {
         assert_eq!(self.disk_inode.type_, FileType::File, "write_at is only available on file");
         self._write_at(offset, buf)
     }
+    /// the size returned here is logical size(entry num for directory), not the disk space used.
     fn info(&self) -> vfs::Result<vfs::FileInfo> {
         Ok(vfs::FileInfo {
-            size: self._size(),
+            size: match self.disk_inode.type_ {
+                FileType::File => self.disk_inode.size as usize,
+                FileType::Dir => self.disk_inode.blocks as usize,
+                _ => unimplemented!(),
+            },
             mode: 0,
             type_: vfs::FileType::from(self.disk_inode.type_.clone()),
             blocks: self.disk_inode.blocks as usize,
+            nlinks: self.disk_inode.nlinks as usize,
         })
     }
     fn sync(&mut self) -> vfs::Result<()> {
@@ -259,6 +300,7 @@ impl vfs::INode for INode {
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
 
         // Ensure the name is not exist
         assert!(self.get_file_inode_id(name).is_none(), "file name exist");
@@ -274,46 +316,149 @@ impl vfs::INode for INode {
             id: inode.borrow().id as u32,
             name: Str256::from(name),
         };
-        self._resize(info.size + BLKSIZE).unwrap();
-        self._write_at(info.size, entry.as_buf()).unwrap();
+        let old_size=self._size();
+        self._resize(old_size + BLKSIZE).unwrap();
+        self._write_at(old_size, entry.as_buf()).unwrap();
+        inode.borrow_mut().nlinks_inc();
+        if(type_==vfs::FileType::Dir){
+            inode.borrow_mut().nlinks_inc();//for .
+            self.nlinks_inc();//for ..
+        }
 
         Ok(inode)
     }
-    fn lookup(&self, path: &str) -> vfs::Result<Ptr<vfs::INode>> {
+    fn unlink(&mut self, name: &str) -> vfs::Result<()> {
+        assert!(name!=".");
+        assert!(name!="..");
         let fs = self.fs.upgrade().unwrap();
         let info = self.info().unwrap();
         assert_eq!(info.type_, vfs::FileType::Dir);
 
-        let (name, rest_path) = match path.find('/') {
-            None => (path, ""),
-            Some(pos) => (&path[0..pos], &path[pos + 1..]),
+        let inode_and_entry_id = self.get_file_inode_and_entry_id(name);
+        if inode_and_entry_id.is_none() {
+            return Err(());
+        }
+        let (inode_id,entry_id)=inode_and_entry_id.unwrap();
+        let inode = fs.get_inode(inode_id);
+
+        let type_ = inode.borrow().disk_inode.type_;
+        if(type_==FileType::Dir){
+            // only . and ..
+            assert!(inode.borrow().disk_inode.blocks==2);
+        }
+        inode.borrow_mut().nlinks_dec();
+        if(type_==FileType::Dir){
+            inode.borrow_mut().nlinks_dec();//for .
+            self.nlinks_dec();//for ..
+        }
+        self.remove_dirent_page(entry_id);
+
+        Ok(())
+    }
+    fn link(&mut self, name: &str, other:&mut vfs::INode) -> vfs::Result<()> {
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
+        assert!(self.get_file_inode_id(name).is_none(), "file name exist");
+        let child = other.downcast_mut::<INode>().unwrap();
+        assert!(Rc::ptr_eq(&fs,&child.fs.upgrade().unwrap()));
+        assert!(child.info().unwrap().type_!=vfs::FileType::Dir);
+        let entry = DiskEntry {
+            id: child.id as u32,
+            name: Str256::from(name),
         };
+        let old_size=self._size();
+        self._resize(old_size + BLKSIZE).unwrap();
+        self._write_at(old_size, entry.as_buf()).unwrap();
+        child.nlinks_inc();
+        Ok(())
+    }
+    fn rename(&mut self, old_name: &str, new_name: &str) -> vfs::Result<()>{
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
+
+        assert!(self.get_file_inode_id(new_name).is_none(), "file name exist");
+
+        let inode_and_entry_id = self.get_file_inode_and_entry_id(old_name);
+        if inode_and_entry_id.is_none() {
+            return Err(());
+        }
+        let (_,entry_id)=inode_and_entry_id.unwrap();
+
+        // in place modify name
+        let mut entry: DiskEntry = unsafe { uninitialized() };
+        let entry_pos=entry_id as usize * BLKSIZE;
+        self._read_at(entry_pos, entry.as_buf_mut()).unwrap();
+        entry.name=Str256::from(new_name);
+        self._write_at(entry_pos, entry.as_buf()).unwrap();
+
+        Ok(())
+    }
+    fn move_(&mut self, old_name: &str,target:&mut vfs::INode, new_name: &str) -> vfs::Result<()>{
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
+        assert!(info.nlinks>0);
+        let dest = target.downcast_mut::<INode>().unwrap();
+        assert!(Rc::ptr_eq(&fs,&dest.fs.upgrade().unwrap()));
+        assert!(dest.info().unwrap().type_==vfs::FileType::Dir);
+        assert!(dest.info().unwrap().nlinks>0);
+
+        assert!(dest.get_file_inode_id(new_name).is_none(), "file name exist");
+
+        let inode_and_entry_id = self.get_file_inode_and_entry_id(old_name);
+        if inode_and_entry_id.is_none() {
+            return Err(());
+        }
+        let (inode_id,entry_id)=inode_and_entry_id.unwrap();
+        let inode = fs.get_inode(inode_id);
+
+        let entry = DiskEntry {
+            id: inode_id as u32,
+            name: Str256::from(new_name),
+        };
+        let old_size=dest._size();
+        dest._resize(old_size + BLKSIZE).unwrap();
+        dest._write_at(old_size, entry.as_buf()).unwrap();
+
+        self.remove_dirent_page(entry_id);
+
+        if(inode.borrow().info().unwrap().type_==vfs::FileType::Dir){
+            self.nlinks_dec();
+            dest.nlinks_inc();
+        }
+
+        Ok(())
+    }
+    fn find(&self, name: &str) -> vfs::Result<Ptr<vfs::INode>> {
+        let fs = self.fs.upgrade().unwrap();
+        let info = self.info().unwrap();
+        assert_eq!(info.type_, vfs::FileType::Dir);
         let inode_id = self.get_file_inode_id(name);
         if inode_id.is_none() {
             return Err(());
         }
         let inode = fs.get_inode(inode_id.unwrap());
-
-        let type_ = inode.borrow().disk_inode.type_;
-        match type_ {
-            FileType::File => if rest_path == "" { Ok(inode) } else { Err(()) },
-            FileType::Dir => if rest_path == "" { Ok(inode) } else { inode.borrow().lookup(rest_path) },
-            _ => unimplemented!(),
-        }
+        Ok(inode)
     }
-    fn list(&self) -> vfs::Result<Vec<String>> {
+    fn get_entry(&self,id: usize) -> vfs::Result<String> {
         assert_eq!(self.disk_inode.type_, FileType::Dir);
-
-        Ok((0..self.disk_inode.blocks)
-            .map(|i| {
-                use vfs::INode;
-                let mut entry: DiskEntry = unsafe { uninitialized() };
-                self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
-                String::from(entry.name.as_ref())
-            }).collect())
+        assert!(id<self.disk_inode.blocks as usize);
+        use vfs::INode;
+        let mut entry: DiskEntry = unsafe { uninitialized() };
+        self._read_at(id as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
+        Ok(String::from(entry.name.as_ref()))
     }
     fn fs(&self) -> Weak<vfs::FileSystem> {
         self.fs.clone()
+    }
+    fn as_any_ref(&self) -> &Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut Any {
+        self
     }
 }
 
@@ -322,6 +467,12 @@ impl Drop for INode {
     fn drop(&mut self) {
         use vfs::INode;
         self.sync().expect("failed to sync");
+        if(self.disk_inode.nlinks<=0){
+            let fs = self.fs.upgrade().unwrap();
+            self._resize(0);
+            self.disk_inode.sync();
+            fs.free_block(self.id);
+        }
     }
 }
 
@@ -393,7 +544,9 @@ impl SimpleFileSystem {
         {
             use vfs::INode;
             let root = sfs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
-            root.borrow_mut().init_dir(BLKN_ROOT).unwrap();
+            root.borrow_mut().init_dir_entry(BLKN_ROOT).unwrap();
+            root.borrow_mut().nlinks_inc();//for .
+            root.borrow_mut().nlinks_inc();//for ..(root's parent is itself)
             root.borrow_mut().sync().unwrap();
         }
 
@@ -416,8 +569,15 @@ impl SimpleFileSystem {
         let id = self.free_map.borrow_mut().alloc();
         if id.is_some() {
             self.super_block.borrow_mut().unused_blocks -= 1;    // will panic if underflow
+            id
+        }else{
+            self.flush_unreachable_inodes();
+            let id = self.free_map.borrow_mut().alloc();
+            if id.is_some() {
+                self.super_block.borrow_mut().unused_blocks -= 1;
+            }
+            id
         }
-        id
     }
     /// Free a block
     fn free_block(&self, block_id: usize) {
@@ -462,8 +622,28 @@ impl SimpleFileSystem {
         let id = self.alloc_block().unwrap();
         let disk_inode = Dirty::new_dirty(DiskINode::new_dir());
         let inode = self._new_inode(id, disk_inode);
-        inode.borrow_mut().init_dir(parent).unwrap();
+        inode.borrow_mut().init_dir_entry(parent).unwrap();
         Ok(inode)
+    }
+    fn flush_unreachable_inodes(&self){
+        let mut inodes = self.inodes.borrow_mut();
+        let ids: Vec<_> = inodes.keys().cloned().collect();
+        for id in ids.iter() {
+            let mut should_remove=false;
+            // Since non-lexical-lifetime is not stable...
+            {
+                let inodeRc=inodes.get(&id).unwrap();
+                if Rc::strong_count(inodeRc)<=1 {
+                    use vfs::INode;
+                    if inodeRc.borrow().info().unwrap().nlinks==0 {
+                        should_remove=true;
+                    }
+                }
+            }
+            if(should_remove){
+                inodes.remove(&id);
+            }
+        }
     }
 }
 
@@ -488,6 +668,7 @@ impl vfs::FileSystem for SimpleFileSystem {
             use vfs::INode;
             inode.borrow_mut().sync().unwrap();
         }
+        self.flush_unreachable_inodes();
         Ok(())
     }
 
