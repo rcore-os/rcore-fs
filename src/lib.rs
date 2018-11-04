@@ -12,6 +12,7 @@ extern crate alloc;
 extern crate bit_vec;
 #[macro_use]
 extern crate static_assertions;
+extern crate spin;
 
 #[cfg(not(test))]
 macro_rules! eprintln {

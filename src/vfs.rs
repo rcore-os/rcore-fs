@@ -1,4 +1,4 @@
-use alloc::{vec::Vec, string::String, rc::{Rc, Weak}};
+use alloc::{vec::Vec, string::String, sync::{Arc, Weak}};
 use core::cell::RefCell;
 use core::mem::size_of;
 use core;
@@ -14,41 +14,35 @@ pub trait Device {
 
 /// ﻿Abstract operations on a inode.
 pub trait INode: Debug + Any {
-    fn open(&mut self, flags: u32) -> Result<()>;
-    fn close(&mut self) -> Result<()>;
+    fn open(&self, flags: u32) -> Result<()>;
+    fn close(&self) -> Result<()>;
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
     fn info(&self) -> Result<FileInfo>;
-    fn sync(&mut self) -> Result<()>;
-    fn resize(&mut self, len: usize) -> Result<()>;
-    fn create(&mut self, name: &str, type_: FileType) -> Result<INodePtr>;
-    fn unlink(&mut self, name: &str) -> Result<()>;
+    fn sync(&self) -> Result<()>;
+    fn resize(&self, len: usize) -> Result<()>;
+    fn create(&self, name: &str, type_: FileType) -> Result<Arc<INode>>;
+    fn unlink(&self, name: &str) -> Result<()>;
     /// user of the vfs api should call borrow_mut by itself
-    fn link(&mut self, name: &str, other: &mut INode) -> Result<()>;
-    fn rename(&mut self, old_name: &str, new_name: &str) -> Result<()>;
+    fn link(&self, name: &str, other: &Arc<INode>) -> Result<()>;
+    fn rename(&self, old_name: &str, new_name: &str) -> Result<()>;
     // when self==target use rename instead since it's not possible to have two mut_ref at the same time.
-    fn move_(&mut self, old_name: &str, target: &mut INode, new_name: &str) -> Result<()>;
+    fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> Result<()>;
     /// lookup with only one layer
-    fn find(&self, name: &str) -> Result<INodePtr>;
+    fn find(&self, name: &str) -> Result<Arc<INode>>;
     /// like list()[id]
     /// only get one item in list, often faster than list
     fn get_entry(&self, id: usize) -> Result<String>;
     //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
-    fn fs(&self) -> Weak<FileSystem>;
+    fn fs(&self) -> Arc<FileSystem>;
     /// this is used to implement dynamics cast
     /// simply return self in the implement of the function
     fn as_any_ref(&self) -> &Any;
-    /// this is used to implement dynamics cast
-    /// simply return self in the implement of the function
-    fn as_any_mut(&mut self) -> &mut Any;
 }
 
 impl INode {
     pub fn downcast_ref<T: INode>(&self) -> Option<&T> {
         self.as_any_ref().downcast_ref::<T>()
-    }
-    pub fn downcast_mut<T: INode>(&mut self) -> Option<&mut T> {
-        self.as_any_mut().downcast_mut::<T>()
     }
     pub fn list(&self) -> Result<Vec<String>> {
         let info = self.info().unwrap();
@@ -57,16 +51,12 @@ impl INode {
             self.get_entry(i).unwrap()
         }).collect())
     }
-    pub fn lookup(&self, path: &str) -> Result<INodePtr> {
-        if self.info().unwrap().type_ != FileType::Dir {
-            return Err(());
-        }
-        let mut result = self.find(".").unwrap();
+    pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
+        assert_eq!(self.info().unwrap().type_, FileType::Dir);
+        let mut result = self.find(".")?;
         let mut rest_path = path;
         while rest_path != "" {
-            if result.borrow().info().unwrap().type_ != FileType::Dir {
-                return Err(());
-            }
+            assert_eq!(result.info()?.type_, FileType::Dir);
             let mut name;
             match rest_path.find('/') {
                 None => {
@@ -78,8 +68,7 @@ impl INode {
                     rest_path = &rest_path[pos + 1..]
                 }
             };
-            let found = result.borrow().find(name);
-            match found {
+            match result.find(name) {
                 Err(_) => return Err(()),
                 Ok(inode) => result = inode,
             };
@@ -117,10 +106,8 @@ pub type Result<T> = core::result::Result<T, ()>;
 /// ﻿Abstract filesystem
 pub trait FileSystem {
     fn sync(&self) -> Result<()>;
-    fn root_inode(&self) -> INodePtr;
+    fn root_inode(&self) -> Arc<INode>;
     fn info(&self) -> &'static FsInfo;
 //    fn unmount(&self) -> Result<()>;
 //    fn cleanup(&self);
 }
-
-pub type INodePtr = Rc<RefCell<INode>>;
