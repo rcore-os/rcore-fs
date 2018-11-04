@@ -110,24 +110,23 @@ fn resize() {
 #[test]
 fn create_then_lookup() {
     let sfs = _create_new_sfs();
-    {
-        let root = sfs.root_inode();
+    let root = sfs.root_inode();
 
-        assert!(Rc::ptr_eq(&root.borrow().lookup(".").unwrap(), &root), "failed to find .");
-        assert!(Rc::ptr_eq(&root.borrow().lookup("..").unwrap(), &root), "failed to find ..");
+    assert!(Rc::ptr_eq(&root.borrow().lookup(".").unwrap(), &root), "failed to find .");
+    assert!(Rc::ptr_eq(&root.borrow().lookup("..").unwrap(), &root), "failed to find ..");
 
-        let file1 = root.borrow_mut().create("file1", FileType::File)
-            .expect("failed to create file1");
-        assert!(Rc::ptr_eq(&root.borrow().lookup("file1").unwrap(), &file1), "failed to find file1");
-        assert!(root.borrow().lookup("file2").is_err(), "found non-existent file");
+    let file1 = root.borrow_mut().create("file1", FileType::File)
+        .expect("failed to create file1");
+    assert!(Rc::ptr_eq(&root.borrow().lookup("file1").unwrap(), &file1), "failed to find file1");
+    assert!(root.borrow().lookup("file2").is_err(), "found non-existent file");
 
-        let dir1 = root.borrow_mut().create("dir1", FileType::Dir)
-            .expect("failed to create dir1");
-        let file2 = dir1.borrow_mut().create("file2", FileType::File)
-            .expect("failed to create /dir1/file2");
-        assert!(Rc::ptr_eq(&root.borrow().lookup("dir1/file2").unwrap(), &file2), "failed to find dir1/file1");
-        assert!(Rc::ptr_eq(&dir1.borrow().lookup("..").unwrap(), &root), "failed to find .. from dir1");
-    }
+    let dir1 = root.borrow_mut().create("dir1", FileType::Dir)
+        .expect("failed to create dir1");
+    let file2 = dir1.borrow_mut().create("file2", FileType::File)
+        .expect("failed to create /dir1/file2");
+    assert!(Rc::ptr_eq(&root.borrow().lookup("dir1/file2").unwrap(), &file2), "failed to find dir1/file1");
+    assert!(Rc::ptr_eq(&dir1.borrow().lookup("..").unwrap(), &root), "failed to find .. from dir1");
+
     sfs.sync().unwrap();
 }
 

@@ -10,7 +10,7 @@ use structs::*;
 use vfs::{self, Device};
 use util::*;
 
-trait DeviceExt: Device {
+impl Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.read_at(id * BLKSIZE + offset, buf) {
@@ -33,8 +33,6 @@ trait DeviceExt: Device {
     }
 }
 
-impl DeviceExt for Device {}
-
 type Ptr<T> = Rc<RefCell<T>>;
 
 /// inode for sfs
@@ -45,8 +43,6 @@ pub struct INode {
     id: INodeId,
     /// Weak reference to SFS, used by almost all operations
     fs: Weak<SimpleFileSystem>,
-    // Point to inode in ucore VFS, used by c_interface
-//    ucore_inode: *const (),
 }
 
 impl Debug for INode {
@@ -321,7 +317,7 @@ impl vfs::INode for INode {
         self._resize(old_size + BLKSIZE).unwrap();
         self._write_at(old_size, entry.as_buf()).unwrap();
         inode.borrow_mut().nlinks_inc();
-        if (type_ == vfs::FileType::Dir) {
+        if type_ == vfs::FileType::Dir {
             inode.borrow_mut().nlinks_inc();//for .
             self.nlinks_inc();//for ..
         }
@@ -343,12 +339,12 @@ impl vfs::INode for INode {
         let inode = fs.get_inode(inode_id);
 
         let type_ = inode.borrow().disk_inode.type_;
-        if (type_ == FileType::Dir) {
+        if type_ == FileType::Dir {
             // only . and ..
-            assert!(inode.borrow().disk_inode.blocks == 2);
+            assert_eq!(inode.borrow().disk_inode.blocks, 2);
         }
         inode.borrow_mut().nlinks_dec();
-        if (type_ == FileType::Dir) {
+        if type_ == FileType::Dir {
             inode.borrow_mut().nlinks_dec();//for .
             self.nlinks_dec();//for ..
         }
@@ -426,7 +422,7 @@ impl vfs::INode for INode {
 
         self.remove_dirent_page(entry_id);
 
-        if (inode.borrow().info().unwrap().type_ == vfs::FileType::Dir) {
+        if inode.borrow().info().unwrap().type_ == vfs::FileType::Dir {
             self.nlinks_dec();
             dest.nlinks_inc();
         }
@@ -468,7 +464,7 @@ impl Drop for INode {
     fn drop(&mut self) {
         use vfs::INode;
         self.sync().expect("failed to sync");
-        if (self.disk_inode.nlinks <= 0) {
+        if self.disk_inode.nlinks <= 0 {
             let fs = self.fs.upgrade().unwrap();
             self._resize(0);
             self.disk_inode.sync();
@@ -536,20 +532,18 @@ impl SimpleFileSystem {
         let sfs = SimpleFileSystem {
             super_block: RefCell::new(Dirty::new_dirty(super_block)),
             free_map: RefCell::new(Dirty::new_dirty(free_map)),
-            inodes: RefCell::new(BTreeMap::<INodeId, Ptr<INode>>::new()),
+            inodes: RefCell::new(BTreeMap::new()),
             device: RefCell::new(device),
             self_ptr: Weak::default(),
         }.wrap();
 
         // Init root INode
-        {
-            use vfs::INode;
-            let root = sfs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
-            root.borrow_mut().init_dir_entry(BLKN_ROOT).unwrap();
-            root.borrow_mut().nlinks_inc();//for .
-            root.borrow_mut().nlinks_inc();//for ..(root's parent is itself)
-            root.borrow_mut().sync().unwrap();
-        }
+        use vfs::INode;
+        let root = sfs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
+        root.borrow_mut().init_dir_entry(BLKN_ROOT).unwrap();
+        root.borrow_mut().nlinks_inc();//for .
+        root.borrow_mut().nlinks_inc();//for ..(root's parent is itself)
+        root.borrow_mut().sync().unwrap();
 
         sfs
     }
@@ -628,22 +622,13 @@ impl SimpleFileSystem {
     }
     fn flush_unreachable_inodes(&self) {
         let mut inodes = self.inodes.borrow_mut();
-        let ids: Vec<_> = inodes.keys().cloned().collect();
-        for id in ids.iter() {
-            let mut should_remove = false;
-            // Since non-lexical-lifetime is not stable...
-            {
-                let inodeRc = inodes.get(&id).unwrap();
-                if Rc::strong_count(inodeRc) <= 1 {
-                    use vfs::INode;
-                    if inodeRc.borrow().info().unwrap().nlinks == 0 {
-                        should_remove = true;
-                    }
-                }
-            }
-            if (should_remove) {
-                inodes.remove(&id);
-            }
+        let remove_ids: Vec<_> = inodes.iter().filter(|(_, inode)| {
+            use vfs::INode;
+            Rc::strong_count(inode) <= 1
+                && inode.borrow().info().unwrap().nlinks == 0
+        }).map(|(&id, _)| id).collect();
+        for id in remove_ids.iter() {
+            inodes.remove(&id);
         }
     }
 }
@@ -651,19 +636,15 @@ impl SimpleFileSystem {
 impl vfs::FileSystem for SimpleFileSystem {
     /// Write back super block if dirty
     fn sync(&self) -> vfs::Result<()> {
-        {
-            let mut super_block = self.super_block.borrow_mut();
-            if super_block.dirty() {
-                self.device.borrow_mut().write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf()).unwrap();
-                super_block.sync();
-            }
+        let mut super_block = self.super_block.borrow_mut();
+        if super_block.dirty() {
+            self.device.borrow_mut().write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf()).unwrap();
+            super_block.sync();
         }
-        {
-            let mut free_map = self.free_map.borrow_mut();
-            if free_map.dirty() {
-                self.device.borrow_mut().write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf()).unwrap();
-                free_map.sync();
-            }
+        let mut free_map = self.free_map.borrow_mut();
+        if free_map.dirty() {
+            self.device.borrow_mut().write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf()).unwrap();
+            free_map.sync();
         }
         for inode in self.inodes.borrow().values() {
             use vfs::INode;
