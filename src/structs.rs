@@ -58,6 +58,7 @@ pub struct DiskEntry {
 
 #[repr(C)]
 pub struct Str256(pub [u8; 256]);
+
 #[repr(C)]
 pub struct Str32(pub [u8; 32]);
 
@@ -67,22 +68,26 @@ impl AsRef<str> for Str256 {
         str::from_utf8(&self.0[0..len]).unwrap()
     }
 }
+
 impl AsRef<str> for Str32 {
     fn as_ref(&self) -> &str {
         let len = self.0.iter().enumerate().find(|(_, &b)| b == 0).unwrap().0;
         str::from_utf8(&self.0[0..len]).unwrap()
     }
 }
+
 impl Debug for Str256 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.as_ref())
     }
 }
+
 impl Debug for Str32 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.as_ref())
     }
 }
+
 impl<'a> From<&'a str> for Str256 {
     fn from(s: &'a str) -> Self {
         let mut ret = [0u8; 256];
@@ -90,6 +95,7 @@ impl<'a> From<&'a str> for Str256 {
         Str256(ret)
     }
 }
+
 impl<'a> From<&'a str> for Str32 {
     fn from(s: &'a str) -> Self {
         let mut ret = [0u8; 32];
@@ -132,16 +138,19 @@ impl DiskINode {
 /// Convert structs to [u8] slice
 pub trait AsBuf {
     fn as_buf(&self) -> &[u8] {
-        unsafe{ slice::from_raw_parts(self as *const _ as *const u8, size_of_val(self)) }
+        unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of_val(self)) }
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
-        unsafe{ slice::from_raw_parts_mut(self as *mut _ as *mut u8, size_of_val(self)) }
+        unsafe { slice::from_raw_parts_mut(self as *mut _ as *mut u8, size_of_val(self)) }
     }
 }
 
 impl AsBuf for SuperBlock {}
+
 impl AsBuf for DiskINode {}
+
 impl AsBuf for DiskEntry {}
+
 impl AsBuf for u32 {}
 
 /*
@@ -184,7 +193,10 @@ pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1;
 #[repr(u16)]
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum FileType {
-    Invalid = 0, File = 1, Dir = 2, Link = 3,
+    Invalid = 0,
+    File = 1,
+    Dir = 2,
+    Link = 3,
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);

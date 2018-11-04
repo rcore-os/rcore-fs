@@ -18,7 +18,7 @@ fn main() -> Result<()> {
         _ => {
             println!("USAGE: <zip|unzip> <PATH> <IMG>");
             panic!("Invalid command: {}", cmd);
-        },
+        }
     }
 }
 
