@@ -1,9 +1,9 @@
 ucore:
-	rustup override set nightly-2018-04-01
-	RUST_TARGET_PATH=$(shell pwd) xargo build --target ucore --release
+	rustup override set nightly
+	cargo xbuild --target ucore.json --release
 
 install-rust:
 	which cargo || ( curl https://sh.rustup.rs -sSf | sh )
-	which xargo || ( rustup component add rust-src && cargo install xargo )
+	which cargo-xbuild || ( rustup component add rust-src && cargo install cargo-xbuild )
 
 .PHONY: ucore install-rust

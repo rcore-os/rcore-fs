@@ -8,8 +8,10 @@
   "features": "-mmx,-sse,+soft-float",
   "os": "none",
   "arch": "x86",
-  "linker-flavor": "ld",
-  "pre-link-args": ["-m32"],
+  "linker-flavor": "ld.lld",
+  "pre-link-args": {
+    "ld.lld": ["-m32"]
+  },
   "eliminate-frame-pointer": false,
   "no-compiler-rt": true,
   "morestack": false,

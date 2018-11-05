@@ -13,3 +13,5 @@ panic = 'abort' # prevent `_Unwind_Resume` link error
 bitflags = "1.0"
 static_assertions = "0.2.5"
 simple-filesystem = { path = ".." }
+spin = "0.4"
+lazy_static = { version = "1.1", features = ["spin_no_std"] }
