@@ -10,7 +10,7 @@ pub trait BlockedDevice {
 
 macro_rules! try0 {
     ($len:expr, $res:expr) => {
-        if(!$res) {return Some($len);}
+        if !$res {return Some($len);}
     };
 }
 
@@ -24,7 +24,7 @@ impl<T: BlockedDevice> Device for T {
         };
 
         // For each block
-        for mut range in iter {
+        for range in iter {
             let len = range.origin_begin() - offset;
             let buf = &mut buf[range.origin_begin() - offset..range.origin_end() - offset];
             if range.is_full() {
@@ -51,7 +51,7 @@ impl<T: BlockedDevice> Device for T {
         };
 
         // For each block
-        for mut range in iter {
+        for range in iter {
             let len = range.origin_begin() - offset;
             let buf = &buf[range.origin_begin() - offset..range.origin_end() - offset];
             if range.is_full() {
@@ -121,7 +121,7 @@ mod test {
     #[test]
     fn write() {
         let mut buf: [u8; 16] = [0; 16];
-        let mut res: [u8; 6] = [3, 4, 5, 6, 7, 8];
+        let res: [u8; 6] = [3, 4, 5, 6, 7, 8];
 
         // all inside
         let ret = Device::write_at(&mut buf, 3, &res);

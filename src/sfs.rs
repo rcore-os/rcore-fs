@@ -1,6 +1,6 @@
 use bit_vec::BitVec;
 use alloc::{boxed::Box, vec::Vec, collections::BTreeMap, sync::{Arc, Weak}, string::String};
-use core::mem::{uninitialized, size_of};
+use core::mem::uninitialized;
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
 use core::any::Any;
@@ -98,11 +98,11 @@ impl INodeImpl {
                 self._read_at(i as usize * BLKSIZE, entry.as_buf_mut()).unwrap();
                 (entry, i)
             })
-            .find(|(entry, id)| entry.name.as_ref() == name)
+            .find(|(entry, _)| entry.name.as_ref() == name)
             .map(|(entry, id)| (entry.id as INodeId, id as usize))
     }
     fn get_file_inode_id(&self, name: &str) -> Option<INodeId> {
-        self.get_file_inode_and_entry_id(name).map(|(inode_id, entry_id)| { inode_id })
+        self.get_file_inode_and_entry_id(name).map(|(inode_id, _)| inode_id)
     }
     /// Init dir content. Insert 2 init entries.
     /// This do not init nlinks, please modify the nlinks in the invoker.
@@ -248,7 +248,7 @@ impl INodeImpl {
 }
 
 impl vfs::INode for INodeImpl {
-    fn open(&self, flags: u32) -> vfs::Result<()> {
+    fn open(&self, _flags: u32) -> vfs::Result<()> {
         // Do nothing
         Ok(())
     }
@@ -339,7 +339,7 @@ impl vfs::INode for INodeImpl {
             inode.nlinks_dec(); //for .
             self.nlinks_dec();  //for ..
         }
-        self.remove_dirent_page(entry_id);
+        self.remove_dirent_page(entry_id)?;
 
         Ok(())
     }
@@ -401,7 +401,7 @@ impl vfs::INode for INodeImpl {
         dest._resize(old_size + BLKSIZE).unwrap();
         dest._write_at(old_size, entry.as_buf()).unwrap();
 
-        self.remove_dirent_page(entry_id);
+        self.remove_dirent_page(entry_id)?;
 
         if inode.info()?.type_ == vfs::FileType::Dir {
             self.nlinks_dec();
@@ -436,7 +436,7 @@ impl Drop for INodeImpl {
     fn drop(&mut self) {
         self.sync().expect("failed to sync");
         if self.disk_inode.read().nlinks <= 0 {
-            self._resize(0);
+            self._resize(0).unwrap();
             self.disk_inode.write().sync();
             self.fs.free_block(self.id);
         }
@@ -481,7 +481,7 @@ impl SimpleFileSystem {
         }.wrap())
     }
     /// Create a new SFS on blank disk
-    pub fn create(mut device: Box<Device>, space: usize) -> Arc<Self> {
+    pub fn create(device: Box<Device>, space: usize) -> Arc<Self> {
         let blocks = (space / BLKSIZE).min(BLKBITS);
         assert!(blocks >= 16, "space too small");
 

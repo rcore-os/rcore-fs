@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter, Error};
 use alloc::str;
 
 /// On-disk superblock
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct SuperBlock {
     /// magic number, should be SFS_MAGIC
@@ -20,7 +20,7 @@ pub struct SuperBlock {
 }
 
 /// inode (on disk)
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct DiskINode {
     /// size of the file (in bytes)
@@ -41,13 +41,13 @@ pub struct DiskINode {
     pub db_indirect: u32,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct IndirectBlock {
     pub entries: [u32; BLK_NENTRY],
 }
 
 /// file entry (on disk)
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct DiskEntry {
     /// inode number

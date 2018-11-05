@@ -1,7 +1,4 @@
-use alloc::{vec::Vec, string::String, sync::{Arc, Weak}};
-use core::cell::RefCell;
-use core::mem::size_of;
-use core;
+use alloc::{vec::Vec, string::String, sync::Arc};
 use core::fmt::Debug;
 use core::any::Any;
 
@@ -57,7 +54,7 @@ impl INode {
         let mut rest_path = path;
         while rest_path != "" {
             assert_eq!(result.info()?.type_, FileType::Dir);
-            let mut name;
+            let name;
             match rest_path.find('/') {
                 None => {
                     name = rest_path;

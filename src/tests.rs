@@ -32,7 +32,7 @@ fn open_sample_file() {
 #[test]
 fn create_new_sfs() {
     let sfs = _create_new_sfs();
-    let root = sfs.root_inode();
+    let _root = sfs.root_inode();
 }
 
 // #[test]

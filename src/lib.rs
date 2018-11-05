@@ -7,7 +7,6 @@
 #[cfg(any(test, feature = "std"))]
 #[macro_use]
 extern crate std;
-#[macro_use]
 extern crate alloc;
 extern crate bit_vec;
 #[macro_use]
