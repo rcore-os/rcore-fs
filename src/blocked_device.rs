@@ -2,7 +2,7 @@ use util::*;
 use vfs::Device;
 
 /// Device which can only R/W in blocks
-pub trait BlockedDevice {
+pub trait BlockedDevice: Send {
     const BLOCK_SIZE_LOG2: u8;
     fn read_at(&mut self, block_id: usize, buf: &mut [u8]) -> bool;
     fn write_at(&mut self, block_id: usize, buf: &[u8]) -> bool;

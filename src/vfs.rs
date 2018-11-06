@@ -4,13 +4,13 @@ use core::any::Any;
 
 /// Interface for FS to read & write
 ///     TODO: use std::io::{Read, Write}
-pub trait Device {
+pub trait Device: Send {
     fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
     fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
 }
 
 /// ﻿Abstract operations on a inode.
-pub trait INode: Debug + Any {
+pub trait INode: Debug + Any + Sync + Send {
     fn open(&self, flags: u32) -> Result<()>;
     fn close(&self) -> Result<()>;
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
@@ -101,7 +101,7 @@ pub struct FsInfo {
 pub type Result<T> = core::result::Result<T, ()>;
 
 /// ﻿Abstract filesystem
-pub trait FileSystem {
+pub trait FileSystem: Sync {
     fn sync(&self) -> Result<()>;
     fn root_inode(&self) -> Arc<INode>;
     fn info(&self) -> &'static FsInfo;
