@@ -1,4 +1,4 @@
-use vfs::{INode, Result};
+use vfs::{INode, Result, FileInfo};
 use alloc::sync::Arc;
 
 pub struct File {
@@ -25,5 +25,9 @@ impl File {
         let len = self.inode.write_at(self.offset, buf)?;
         self.offset += len;
         Ok(len)
+    }
+
+    pub fn info(&self) -> Result<FileInfo> {
+        self.inode.info()
     }
 }
