@@ -25,6 +25,7 @@ mod util;
 mod blocked_device;
 mod vfs;
 mod sfs;
+pub mod file;
 mod structs;
 #[cfg(test)]
 mod tests;
