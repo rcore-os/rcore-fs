@@ -248,13 +248,6 @@ impl INodeImpl {
 }
 
 impl vfs::INode for INodeImpl {
-    fn open(&self, _flags: u32) -> vfs::Result<()> {
-        // Do nothing
-        Ok(())
-    }
-    fn close(&self) -> vfs::Result<()> {
-        self.sync()
-    }
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
         assert_eq!(self.disk_inode.read().type_, FileType::File, "read_at is only available on file");
         self._read_at(offset, buf)

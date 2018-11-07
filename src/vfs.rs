@@ -11,8 +11,6 @@ pub trait Device: Send {
 
 /// ﻿Abstract operations on a inode.
 pub trait INode: Debug + Any + Sync + Send {
-    fn open(&self, flags: u32) -> Result<()>;
-    fn close(&self) -> Result<()>;
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
     fn info(&self) -> Result<FileInfo>;
