@@ -1,5 +1,5 @@
 use vfs::{INode, Result, FileInfo};
-use alloc::sync::Arc;
+use alloc::{sync::Arc, string::String};
 
 pub struct File {
     inode: Arc<INode>,
@@ -29,5 +29,9 @@ impl File {
 
     pub fn info(&self) -> Result<FileInfo> {
         self.inode.info()
+    }
+
+    pub fn get_entry(&self, id: usize) -> Result<String> {
+        self.inode.get_entry(id)
     }
 }
