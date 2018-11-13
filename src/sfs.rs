@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter, Error};
 use core::any::Any;
 use dirty::Dirty;
 use structs::*;
-use vfs::{self, Device, INode, FileSystem};
+use vfs::{self, Device, INode, FileSystem, FsError};
 use util::*;
 use spin::{Mutex, RwLock};
 
@@ -249,11 +249,15 @@ impl INodeImpl {
 
 impl vfs::INode for INodeImpl {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        assert_eq!(self.disk_inode.read().type_, FileType::File, "read_at is only available on file");
+        if(self.disk_inode.read().type_!=FileType::File){
+            return Err(FsError::NotFile);
+        }
         self._read_at(offset, buf)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        assert_eq!(self.disk_inode.read().type_, FileType::File, "write_at is only available on file");
+        if(self.disk_inode.read().type_!=FileType::File){
+            return Err(FsError::NotFile);
+        }
         self._write_at(offset, buf)
     }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
@@ -280,16 +284,22 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
-        assert_eq!(self.disk_inode.read().type_, FileType::File, "resize is only available on file");
+        if(self.disk_inode.read().type_!=FileType::File){
+            return Err(FsError::NotFile);
+        }
         self._resize(len)
     }
     fn create(&self, name: &str, type_: vfs::FileType) -> vfs::Result<Arc<vfs::INode>> {
         let info = self.info()?;
-        assert_eq!(info.type_, vfs::FileType::Dir);
+        if(info.type_!=vfs::FileType::Dir){
+            return Err(FsError::NotDir);
+        }
         assert!(info.nlinks > 0);
 
         // Ensure the name is not exist
-        assert!(self.get_file_inode_id(name).is_none(), "file name exist");
+        if(!self.get_file_inode_id(name).is_none()){
+            return Err(FsError::EntryExist);
+        }
 
         // Create new INode
         let inode = match type_ {
@@ -314,12 +324,14 @@ impl vfs::INode for INodeImpl {
         Ok(inode)
     }
     fn unlink(&self, name: &str) -> vfs::Result<()> {
+        let info = self.info()?;
+        if(info.type_!=vfs::FileType::Dir){
+            return Err(FsError::NotDir)
+        }
         assert!(name != ".");
         assert!(name != "..");
-        let info = self.info()?;
-        assert_eq!(info.type_, vfs::FileType::Dir);
 
-        let (inode_id, entry_id) = self.get_file_inode_and_entry_id(name).ok_or(())?;
+        let (inode_id, entry_id) = self.get_file_inode_and_entry_id(name).ok_or(FsError::EntryNotFound)?;
         let inode = self.fs.get_inode(inode_id);
 
         let type_ = inode.disk_inode.read().type_;
@@ -338,12 +350,20 @@ impl vfs::INode for INodeImpl {
     }
     fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
         let info = self.info()?;
-        assert_eq!(info.type_, vfs::FileType::Dir);
+        if(info.type_!=vfs::FileType::Dir){
+            return Err(FsError::NotDir)
+        }
         assert!(info.nlinks > 0);
-        assert!(self.get_file_inode_id(name).is_none(), "file name exist");
-        let child = other.downcast_ref::<INodeImpl>().unwrap();
-        assert!(Arc::ptr_eq(&self.fs, &child.fs));
-        assert!(child.info()?.type_ != vfs::FileType::Dir);
+        if(!self.get_file_inode_id(name).is_none()){
+            return Err(FsError::EntryExist);
+        }
+        let child = other.downcast_ref::<INodeImpl>().ok_or(FsError::NotSameFs)?;
+        if(!Arc::ptr_eq(&self.fs, &child.fs)){
+            return Err(FsError::NotSameFs);
+        }
+        if(child.info()?.type_ == vfs::FileType::Dir){
+            return Err(FsError::IsDir);
+        }
         let entry = DiskEntry {
             id: child.id as u32,
             name: Str256::from(name),
@@ -356,12 +376,16 @@ impl vfs::INode for INodeImpl {
     }
     fn rename(&self, old_name: &str, new_name: &str) -> vfs::Result<()> {
         let info = self.info()?;
-        assert_eq!(info.type_, vfs::FileType::Dir);
+        if(info.type_!=vfs::FileType::Dir){
+            return Err(FsError::NotDir)
+        }
         assert!(info.nlinks > 0);
 
-        assert!(self.get_file_inode_id(new_name).is_none(), "file name exist");
+        if(!self.get_file_inode_id(new_name).is_none()){
+            return Err(FsError::EntryExist);
+        }
 
-        let (_, entry_id) = self.get_file_inode_and_entry_id(old_name).ok_or(())?;
+        let (_, entry_id) = self.get_file_inode_and_entry_id(old_name).ok_or(FsError::EntryNotFound)?;
 
         // in place modify name
         let mut entry: DiskEntry = unsafe { uninitialized() };
@@ -374,16 +398,24 @@ impl vfs::INode for INodeImpl {
     }
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
         let info = self.info()?;
-        assert_eq!(info.type_, vfs::FileType::Dir);
+        if(info.type_!=vfs::FileType::Dir){
+            return Err(FsError::NotDir)
+        }
         assert!(info.nlinks > 0);
-        let dest = target.downcast_ref::<INodeImpl>().unwrap();
-        assert!(Arc::ptr_eq(&self.fs, &dest.fs));
-        assert!(dest.info()?.type_ == vfs::FileType::Dir);
+        let dest = target.downcast_ref::<INodeImpl>().ok_or(FsError::NotSameFs)?;
+        if(!Arc::ptr_eq(&self.fs, &dest.fs)){
+            return Err(FsError::NotSameFs);
+        }
+        if(dest.info()?.type_ != vfs::FileType::Dir){
+            return Err(FsError::NotDir)
+        }
         assert!(dest.info()?.nlinks > 0);
 
-        assert!(dest.get_file_inode_id(new_name).is_none(), "file name exist");
+        if(!self.get_file_inode_id(new_name).is_none()){
+            return Err(FsError::EntryExist);
+        }
 
-        let (inode_id, entry_id) = self.get_file_inode_and_entry_id(old_name).ok_or(())?;
+        let (inode_id, entry_id) = self.get_file_inode_and_entry_id(old_name).ok_or(FsError::EntryNotFound)?;
         let inode = self.fs.get_inode(inode_id);
 
         let entry = DiskEntry {
@@ -405,12 +437,16 @@ impl vfs::INode for INodeImpl {
     }
     fn find(&self, name: &str) -> vfs::Result<Arc<vfs::INode>> {
         let info = self.info()?;
-        assert_eq!(info.type_, vfs::FileType::Dir);
-        let inode_id = self.get_file_inode_id(name).ok_or(())?;
+        if(info.type_!=vfs::FileType::Dir){
+            return Err(FsError::NotDir)
+        }
+        let inode_id = self.get_file_inode_id(name).ok_or(FsError::EntryNotFound)?;
         Ok(self.fs.get_inode(inode_id))
     }
     fn get_entry(&self, id: usize) -> vfs::Result<String> {
-        assert_eq!(self.disk_inode.read().type_, FileType::Dir);
+        if(self.disk_inode.read().type_!=FileType::Dir){
+            return Err(FsError::NotDir)
+        }
         assert!(id < self.disk_inode.read().blocks as usize);
         let mut entry: DiskEntry = unsafe { uninitialized() };
         self._read_at(id as usize * BLKSIZE, entry.as_buf_mut())?;

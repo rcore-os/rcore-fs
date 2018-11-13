@@ -1,6 +1,7 @@
 use alloc::{vec::Vec, string::String, sync::Arc};
 use core::fmt::Debug;
 use core::any::Any;
+use core::result;
 
 /// Interface for FS to read & write
 ///     TODO: use std::io::{Read, Write}
@@ -40,18 +41,24 @@ impl INode {
         self.as_any_ref().downcast_ref::<T>()
     }
     pub fn list(&self) -> Result<Vec<String>> {
-        let info = self.info().unwrap();
-        assert_eq!(info.type_, FileType::Dir);
+        let info = self.info()?;
+        if(info.type_ != FileType::Dir){
+            return Err(FsError::NotDir);
+        }
         Ok((0..info.size).map(|i| {
             self.get_entry(i).unwrap()
         }).collect())
     }
     pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
-        assert_eq!(self.info().unwrap().type_, FileType::Dir);
+        if(self.info()?.type_ != FileType::Dir){
+            return Err(FsError::NotDir);
+        }
         let mut result = self.find(".")?;
         let mut rest_path = path;
         while rest_path != "" {
-            assert_eq!(result.info()?.type_, FileType::Dir);
+            if(result.info()?.type_!= FileType::Dir){
+                return Err(FsError::NotDir);
+            }
             let name;
             match rest_path.find('/') {
                 None => {
@@ -64,7 +71,7 @@ impl INode {
                 }
             };
             match result.find(name) {
-                Err(_) => return Err(()),
+                Err(error) => return Err(error),
                 Ok(inode) => result = inode,
             };
         }
@@ -96,7 +103,21 @@ pub struct FsInfo {
     pub max_file_size: usize,
 }
 
-pub type Result<T> = core::result::Result<T, ()>;
+
+#[derive(Debug)]
+pub enum FsError {
+    NotSupported,//E_UNIMP
+    NotFile,//E_ISDIR
+    IsDir,//E_ISDIR, used only in link
+    NotDir,//E_NOTDIR
+    EntryNotFound,//E_NOENT
+    EntryExist,//E_EXIST
+    NotSameFs,//E_XDEV
+    //and something else
+
+}
+
+pub type Result<T> = result::Result<T,FsError>;
 
 /// ﻿Abstract filesystem
 pub trait FileSystem: Sync {
