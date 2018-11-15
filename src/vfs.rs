@@ -42,7 +42,7 @@ impl INode {
     }
     pub fn list(&self) -> Result<Vec<String>> {
         let info = self.info()?;
-        if(info.type_ != FileType::Dir){
+        if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
         Ok((0..info.size).map(|i| {
@@ -50,13 +50,13 @@ impl INode {
         }).collect())
     }
     pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
-        if(self.info()?.type_ != FileType::Dir){
+        if self.info()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
         let mut result = self.find(".")?;
         let mut rest_path = path;
         while rest_path != "" {
-            if(result.info()?.type_!= FileType::Dir){
+            if result.info()?.type_!= FileType::Dir {
                 return Err(FsError::NotDir);
             }
             let name;

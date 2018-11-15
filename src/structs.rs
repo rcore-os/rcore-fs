@@ -168,6 +168,8 @@ pub const BLKSIZE: usize = 1usize << BLKSIZE_LOG2;
 pub const BLKSIZE_LOG2: u8 = 12;
 /// number of direct blocks in inode
 pub const NDIRECT: usize = 12;
+/// default sfs infomation string
+pub const DEFAULT_INFO: &str = "simple file system";
 /// max length of infomation
 pub const MAX_INFO_LEN: usize = 31;
 /// max length of filename
@@ -182,7 +184,7 @@ pub const BLKN_ROOT: BlockId = 1;
 pub const BLKN_FREEMAP: BlockId = 2;
 /// number of bits in a block
 pub const BLKBITS: usize = BLKSIZE * 8;
-///
+/// size of one entry
 pub const ENTRY_SIZE: usize = 4;
 /// number of entries in a block
 pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
@@ -203,3 +205,4 @@ const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
 const_assert!(o2; size_of::<DiskINode>() <= BLKSIZE);
 const_assert!(o3; size_of::<DiskEntry>() <= BLKSIZE);
 const_assert!(o4; size_of::<IndirectBlock>() == BLKSIZE);
+const_assert!(o5; DEFAULT_INFO.len() <= MAX_INFO_LEN);

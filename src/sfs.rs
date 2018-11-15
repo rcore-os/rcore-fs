@@ -330,10 +330,10 @@ impl vfs::INode for INodeImpl {
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        if name != "." {
+        if name == "." {
             return Err(FsError::IsDir)
         }
-        if name != ".." {
+        if name == ".." {
             return Err(FsError::IsDir)
         }
 
@@ -522,7 +522,7 @@ impl SimpleFileSystem {
             magic: MAGIC,
             blocks: blocks as u32,
             unused_blocks: blocks as u32 - 3,
-            info: Str32::from("simple file system"),
+            info: Str32::from(DEFAULT_INFO),
         };
         let free_map = {
             let mut bitset = BitVec::from_elem(BLKBITS, false);

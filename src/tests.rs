@@ -22,7 +22,8 @@ fn _create_new_sfs() -> Arc<SimpleFileSystem> {
     SimpleFileSystem::create(Box::new(file), 32 * 4096)
 }
 
-//#[test]
+#[test]
+#[ignore]
 fn open_sample_file() {
     _open_sample_file();
 }
@@ -33,7 +34,8 @@ fn create_new_sfs() {
     let _root = sfs.root_inode();
 }
 
-// #[test]
+#[test]
+#[ignore]
 fn print_root() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
@@ -86,26 +88,26 @@ fn resize() -> Result<()> {
     Ok(())
 }
 
-// FIXME: `should_panic` tests will panic again on exit, due to `Dirty` drop
+#[test]
+fn resize_on_dir_should_panic() -> Result<()> {
+   let sfs = _create_new_sfs();
+   let root = sfs.root_inode();
+   assert!(root.resize(4096).is_err());
+   sfs.sync()?;
 
-//#[test]
-//#[should_panic]
-//fn resize_on_dir_should_panic() {
-//    let sfs = _create_new_sfs();
-//    let root = sfs.root_inode();
-//    root.resize(4096).unwrap();
-//    sfs.sync().unwrap();
-//}
-//
-//#[test]
-//#[should_panic]
-//fn resize_too_large_should_panic() {
-//    let sfs = _create_new_sfs();
-//    let root = sfs.root_inode();
-//    let file1 = root.create("file1", FileType::File).unwrap();
-//    file1.resize(1 << 28).unwrap();
-//    sfs.sync().unwrap();
-//}
+   Ok(())
+}
+
+#[test]
+fn resize_too_large_should_panic() -> Result<()> {
+   let sfs = _create_new_sfs();
+   let root = sfs.root_inode();
+   let file1 = root.create("file1", FileType::File)?;
+   assert!(file1.resize(1 << 28).is_err());
+   sfs.sync()?;
+
+   Ok(())
+}
 
 #[test]
 fn create_then_lookup() -> Result<()> {
@@ -142,7 +144,8 @@ fn arc_layout() {
     assert_eq!(ns, &[1usize, 1]);
 }
 
-// #[test]
+#[test]
+#[ignore]
 fn kernel_image_file_create() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
@@ -156,7 +159,8 @@ fn kernel_image_file_create() -> Result<()> {
     Ok(())
 }
 
-// #[test]
+#[test]
+#[ignore]
 fn kernel_image_file_unlink() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
@@ -170,8 +174,8 @@ fn kernel_image_file_unlink() -> Result<()> {
     Ok(())
 }
 
-
-// #[test]
+#[test]
+#[ignore]
 fn kernel_image_file_rename() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
@@ -186,7 +190,8 @@ fn kernel_image_file_rename() -> Result<()> {
     Ok(())
 }
 
-// #[test]
+#[test]
+#[ignore]
 fn kernel_image_file_move() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();

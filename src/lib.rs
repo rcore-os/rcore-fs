@@ -1,5 +1,6 @@
 #![feature(alloc)]
 #![feature(const_fn)]
+#![feature(const_str_len)]
 #![feature(nll)]
 #![cfg_attr(target_arch = "riscv", feature(match_default_bindings))]
 #![no_std]
@@ -14,6 +15,7 @@ extern crate static_assertions;
 extern crate spin;
 
 #[cfg(not(test))]
+#[allow(unused_macros)]
 macro_rules! eprintln {
     () => ();
     ($fmt:expr) => ();
