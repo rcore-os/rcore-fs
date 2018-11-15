@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter, Error};
 use core::any::Any;
 use dirty::Dirty;
 use structs::*;
-use vfs::{self, Device, INode, FileSystem, FsError};
+use vfs::{self, Device, INode, FsError};
 use util::*;
 use spin::{Mutex, RwLock};
 
@@ -134,7 +134,9 @@ impl INodeImpl {
     }
     /// Resize content size, no matter what type it is.
     fn _resize(&self, len: usize) -> vfs::Result<()> {
-        assert!(len <= MAX_FILE_SIZE, "file size exceed limit");
+        if len > MAX_FILE_SIZE {
+            return Err(FsError::InvalidParam);
+        }
         let blocks = ((len + BLKSIZE - 1) / BLKSIZE) as u32;
         use core::cmp::{Ord, Ordering};
         let old_blocks = self.disk_inode.read().blocks;
@@ -249,13 +251,13 @@ impl INodeImpl {
 
 impl vfs::INode for INodeImpl {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        if(self.disk_inode.read().type_!=FileType::File){
+        if self.disk_inode.read().type_!=FileType::File {
             return Err(FsError::NotFile);
         }
         self._read_at(offset, buf)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        if(self.disk_inode.read().type_!=FileType::File){
+        if self.disk_inode.read().type_!=FileType::File {
             return Err(FsError::NotFile);
         }
         self._write_at(offset, buf)
@@ -284,20 +286,20 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
-        if(self.disk_inode.read().type_!=FileType::File){
+        if self.disk_inode.read().type_!=FileType::File {
             return Err(FsError::NotFile);
         }
         self._resize(len)
     }
     fn create(&self, name: &str, type_: vfs::FileType) -> vfs::Result<Arc<vfs::INode>> {
         let info = self.info()?;
-        if(info.type_!=vfs::FileType::Dir){
+        if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir);
         }
         assert!(info.nlinks > 0);
 
         // Ensure the name is not exist
-        if(!self.get_file_inode_id(name).is_none()){
+        if !self.get_file_inode_id(name).is_none() {
             return Err(FsError::EntryExist);
         }
 
@@ -325,11 +327,15 @@ impl vfs::INode for INodeImpl {
     }
     fn unlink(&self, name: &str) -> vfs::Result<()> {
         let info = self.info()?;
-        if(info.type_!=vfs::FileType::Dir){
+        if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        assert!(name != ".");
-        assert!(name != "..");
+        if name != "." {
+            return Err(FsError::IsDir)
+        }
+        if name != ".." {
+            return Err(FsError::IsDir)
+        }
 
         let (inode_id, entry_id) = self.get_file_inode_and_entry_id(name).ok_or(FsError::EntryNotFound)?;
         let inode = self.fs.get_inode(inode_id);
@@ -350,18 +356,18 @@ impl vfs::INode for INodeImpl {
     }
     fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
         let info = self.info()?;
-        if(info.type_!=vfs::FileType::Dir){
+        if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
         assert!(info.nlinks > 0);
-        if(!self.get_file_inode_id(name).is_none()){
+        if !self.get_file_inode_id(name).is_none() {
             return Err(FsError::EntryExist);
         }
         let child = other.downcast_ref::<INodeImpl>().ok_or(FsError::NotSameFs)?;
-        if(!Arc::ptr_eq(&self.fs, &child.fs)){
+        if !Arc::ptr_eq(&self.fs, &child.fs) {
             return Err(FsError::NotSameFs);
         }
-        if(child.info()?.type_ == vfs::FileType::Dir){
+        if child.info()?.type_ == vfs::FileType::Dir {
             return Err(FsError::IsDir);
         }
         let entry = DiskEntry {
@@ -376,12 +382,12 @@ impl vfs::INode for INodeImpl {
     }
     fn rename(&self, old_name: &str, new_name: &str) -> vfs::Result<()> {
         let info = self.info()?;
-        if(info.type_!=vfs::FileType::Dir){
+        if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
         assert!(info.nlinks > 0);
 
-        if(!self.get_file_inode_id(new_name).is_none()){
+        if !self.get_file_inode_id(new_name).is_none() {
             return Err(FsError::EntryExist);
         }
 
@@ -398,20 +404,20 @@ impl vfs::INode for INodeImpl {
     }
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
         let info = self.info()?;
-        if(info.type_!=vfs::FileType::Dir){
+        if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
         assert!(info.nlinks > 0);
         let dest = target.downcast_ref::<INodeImpl>().ok_or(FsError::NotSameFs)?;
-        if(!Arc::ptr_eq(&self.fs, &dest.fs)){
+        if !Arc::ptr_eq(&self.fs, &dest.fs) {
             return Err(FsError::NotSameFs);
         }
-        if(dest.info()?.type_ != vfs::FileType::Dir){
+        if dest.info()?.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
         assert!(dest.info()?.nlinks > 0);
 
-        if(!self.get_file_inode_id(new_name).is_none()){
+        if !self.get_file_inode_id(new_name).is_none() {
             return Err(FsError::EntryExist);
         }
 
@@ -437,14 +443,14 @@ impl vfs::INode for INodeImpl {
     }
     fn find(&self, name: &str) -> vfs::Result<Arc<vfs::INode>> {
         let info = self.info()?;
-        if(info.type_!=vfs::FileType::Dir){
+        if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
         let inode_id = self.get_file_inode_id(name).ok_or(FsError::EntryNotFound)?;
         Ok(self.fs.get_inode(inode_id))
     }
     fn get_entry(&self, id: usize) -> vfs::Result<String> {
-        if(self.disk_inode.read().type_!=FileType::Dir){
+        if self.disk_inode.read().type_!=FileType::Dir {
             return Err(FsError::NotDir)
         }
         assert!(id < self.disk_inode.read().blocks as usize);
@@ -635,6 +641,7 @@ impl vfs::FileSystem for SimpleFileSystem {
             self.device.lock().write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf()).unwrap();
             free_map.sync();
         }
+        self.flush_weak_inodes();
         for inode in self.inodes.read().values() {
             if let Some(inode) = inode.upgrade() {
                 inode.sync()?;

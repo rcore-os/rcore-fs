@@ -36,7 +36,7 @@ pub use blocked_device::BlockedDevice;
 
 #[cfg(any(test, feature = "std"))]
 pub mod std_impl {
-    use std::fs::{File, OpenOptions};
+    use std::fs::File;
     use std::io::{Read, Write, Seek, SeekFrom};
     use super::Device;
 

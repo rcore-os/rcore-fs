@@ -1,12 +1,10 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::fs::{self, OpenOptions};
 use std::boxed::Box;
 use std::sync::Arc;
 use std::mem::uninitialized;
 use super::sfs::*;
 use super::vfs::*;
-use super::vfs::INode;
-use super::structs::{DiskEntry, AsBuf};
+use super::structs::AsBuf;
 
 fn _open_sample_file() -> Arc<SimpleFileSystem> {
     fs::copy("sfs.img", "test.img").expect("failed to open sfs.img");
@@ -36,16 +34,17 @@ fn create_new_sfs() {
 }
 
 // #[test]
-fn print_root() {
+fn print_root() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
     println!("{:?}", root);
 
-    let files = root.list().unwrap();
+    let files = root.list()?;
     println!("{:?}", files);
-    assert_eq!(files[3], root.get_entry(3).unwrap());
+    assert_eq!(files[3], root.get_entry(3)?);
 
-    sfs.sync().unwrap();
+    sfs.sync()?;
+    Ok(())
 }
 
 #[test]
@@ -148,7 +147,7 @@ fn kernel_image_file_create() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
     let files_count_before = root.list()?.len();
-    root.create("hello2", FileType::File);
+    root.create("hello2", FileType::File)?;
     let files_count_after = root.list()?.len();
     assert_eq!(files_count_before + 1, files_count_after);
     assert!(root.lookup("hello2").is_ok());
@@ -176,7 +175,7 @@ fn kernel_image_file_unlink() -> Result<()> {
 fn kernel_image_file_rename() -> Result<()> {
     let sfs = _open_sample_file();
     let root = sfs.root_inode();
-    let files_count_before = root.list().unwrap().len();
+    let files_count_before = root.list()?.len();
     root.rename("hello", "hello2")?;
     let files_count_after = root.list()?.len();
     assert_eq!(files_count_before, files_count_after);
@@ -213,7 +212,7 @@ fn hard_link() -> Result<()> {
     let file1 = root.create("file1", FileType::File)?;
     root.link("file2", &file1)?;
     let file2 = root.lookup("file2")?;
-    file1.resize(100);
+    file1.resize(100)?;
     assert_eq!(file2.info()?.size, 100);
 
     sfs.sync()?;

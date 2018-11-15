@@ -113,8 +113,8 @@ pub enum FsError {
     EntryNotFound,//E_NOENT
     EntryExist,//E_EXIST
     NotSameFs,//E_XDEV
+    InvalidParam,//E_INVAL
     //and something else
-
 }
 
 pub type Result<T> = result::Result<T,FsError>;
