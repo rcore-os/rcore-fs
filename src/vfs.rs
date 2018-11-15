@@ -114,6 +114,7 @@ pub enum FsError {
     EntryExist,//E_EXIST
     NotSameFs,//E_XDEV
     InvalidParam,//E_INVAL
+    NoDeviceSpace,//E_NOSPC, but is defined and not used in the original ucore, which uses E_NO_MEM
     //and something else
 }
 
