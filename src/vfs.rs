@@ -10,7 +10,7 @@ pub trait Device: Send {
     fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
 }
 
-/// ﻿Abstract operations on a inode.
+/// Abstract operations on a inode.
 pub trait INode: Debug + Any + Sync + Send {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
@@ -45,9 +45,9 @@ impl INode {
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
-        Ok((0..info.size).map(|i| {
-            self.get_entry(i).unwrap()
-        }).collect())
+        (0..info.size).map(|i| {
+            self.get_entry(i)
+        }).collect()
     }
     pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
         if self.info()?.type_ != FileType::Dir {
@@ -103,10 +103,11 @@ pub struct FsInfo {
     pub max_file_size: usize,
 }
 
-
+// Note: IOError/NoMemory always lead to a panic since it's hard to recover from it.
+//       We also panic when we can not parse the fs on disk normally
 #[derive(Debug)]
 pub enum FsError {
-    NotSupported,//E_UNIMP
+    NotSupported,//E_UNIMP, or E_INVAL
     NotFile,//E_ISDIR
     IsDir,//E_ISDIR, used only in link
     NotDir,//E_NOTDIR
@@ -115,12 +116,14 @@ pub enum FsError {
     NotSameFs,//E_XDEV
     InvalidParam,//E_INVAL
     NoDeviceSpace,//E_NOSPC, but is defined and not used in the original ucore, which uses E_NO_MEM
-    //and something else
+    DirRemoved,//E_NOENT, when the current dir was remove by a previous unlink
+    DirNotEmpty,//E_NOTEMPTY
+    WrongFs,//E_INVAL, when we find the content on disk is wrong when opening the device
 }
 
 pub type Result<T> = result::Result<T,FsError>;
 
-/// ﻿Abstract filesystem
+/// Abstract filesystem
 pub trait FileSystem: Sync {
     fn sync(&self) -> Result<()>;
     fn root_inode(&self) -> Arc<INode>;

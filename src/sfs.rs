@@ -26,10 +26,9 @@ impl Device {
         }
     }
     /// Load struct `T` from given block in device
-    fn load_struct<T: AsBuf>(&mut self, id: BlockId) -> T {
+    fn load_struct<T: AsBuf>(&mut self, id: BlockId) -> vfs::Result<T> {
         let mut s: T = unsafe { uninitialized() };
-        self.read_block(id, 0, s.as_buf_mut()).unwrap();
-        s
+        self.read_block(id, 0, s.as_buf_mut()).map(|_|{s})
     }
 }
 
@@ -122,7 +121,7 @@ impl INodeImpl {
     /// remove a page in middle of file and insert the last page here, useful for dirent remove
     /// should be only used in unlink
     fn remove_dirent_page(&self, id: usize) -> vfs::Result<()> {
-        assert!(id < self.disk_inode.read().blocks as usize);
+        debug_assert!(id < self.disk_inode.read().blocks as usize);
         let to_remove = self.get_disk_block_id(id)?;
         let current_last = self.get_disk_block_id(self.disk_inode.read().blocks as usize - 1)?;
         self.set_disk_block_id(id, current_last)?;
@@ -199,6 +198,7 @@ impl INodeImpl {
             _ => panic!("Unknown file type"),
         } as u32
     }
+    // Note: the _\w*_at method always return begin>size?0:begin<end?0:(min(size,end)-begin) when success
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
         where F: FnMut(&mut Box<Device>, &BlockRange, usize) -> vfs::Result<()>
@@ -232,13 +232,11 @@ impl INodeImpl {
         })
     }
     /// Clean content, no matter what type it is
-    fn _clean_at(&self, begin: usize, end: usize) -> vfs::Result<()> {
+    fn _clean_at(&self, begin: usize, end: usize) -> vfs::Result<usize> {
         static ZEROS: [u8; BLKSIZE] = [0; BLKSIZE];
-        let size = self._io_at(begin, end, |device, range, _| {
+        self._io_at(begin, end, |device, range, _| {
             device.write_block(range.block, range.begin, &ZEROS[..range.len()])
-        })?;
-        assert_eq!(size, end - begin);
-        Ok(())
+        })
     }
     fn nlinks_inc(&self) {
         self.disk_inode.write().nlinks += 1;
@@ -297,7 +295,9 @@ impl vfs::INode for INodeImpl {
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir);
         }
-        assert!(info.nlinks > 0);
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved)
+        }
 
         // Ensure the name is not exist
         if !self.get_file_inode_id(name).is_none() {
@@ -331,6 +331,9 @@ impl vfs::INode for INodeImpl {
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved)
+        }
         if name == "." {
             return Err(FsError::IsDir)
         }
@@ -344,7 +347,10 @@ impl vfs::INode for INodeImpl {
         let type_ = inode.disk_inode.read().type_;
         if type_ == FileType::Dir {
             // only . and ..
-            assert_eq!(inode.disk_inode.read().blocks, 2);
+            assert!(inode.disk_inode.read().blocks >= 2);
+            if inode.disk_inode.read().blocks > 2 {
+                return Err(FsError::DirNotEmpty)
+            }
         }
         inode.nlinks_dec();
         if type_ == FileType::Dir {
@@ -360,7 +366,9 @@ impl vfs::INode for INodeImpl {
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        assert!(info.nlinks > 0);
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved)
+        }
         if !self.get_file_inode_id(name).is_none() {
             return Err(FsError::EntryExist);
         }
@@ -386,7 +394,15 @@ impl vfs::INode for INodeImpl {
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        assert!(info.nlinks > 0);
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved)
+        }
+        if old_name == "." {
+            return Err(FsError::IsDir)
+        }
+        if old_name == ".." {
+            return Err(FsError::IsDir)
+        }
 
         if !self.get_file_inode_id(new_name).is_none() {
             return Err(FsError::EntryExist);
@@ -408,7 +424,16 @@ impl vfs::INode for INodeImpl {
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        assert!(info.nlinks > 0);
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved)
+        }
+        if old_name == "." {
+            return Err(FsError::IsDir)
+        }
+        if old_name == ".." {
+            return Err(FsError::IsDir)
+        }
+
         let dest = target.downcast_ref::<INodeImpl>().ok_or(FsError::NotSameFs)?;
         if !Arc::ptr_eq(&self.fs, &dest.fs) {
             return Err(FsError::NotSameFs);
@@ -416,7 +441,9 @@ impl vfs::INode for INodeImpl {
         if dest.info()?.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        assert!(dest.info()?.nlinks > 0);
+        if dest.info()?.nlinks <= 0 {
+            return Err(FsError::DirRemoved)
+        }
 
         if !self.get_file_inode_id(new_name).is_none() {
             return Err(FsError::EntryExist);
@@ -472,7 +499,7 @@ impl vfs::INode for INodeImpl {
 impl Drop for INodeImpl {
     /// Auto sync when drop
     fn drop(&mut self) {
-        self.sync().expect("failed to sync");
+        self.sync().expect("Failed to sync when dropping the SimpleFileSystem Inode");
         if self.disk_inode.read().nlinks <= 0 {
             self._resize(0).unwrap();
             self.disk_inode.write().sync();
@@ -504,9 +531,11 @@ pub struct SimpleFileSystem {
 impl SimpleFileSystem {
     /// Load SFS from device
     pub fn open(mut device: Box<Device>) -> vfs::Result<Arc<Self>> {
-        let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER);
-        assert!(super_block.check(), "not a valid SFS");
-        let free_map = device.load_struct::<[u8; BLKSIZE]>(BLKN_FREEMAP);
+        let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER).unwrap();
+        if !super_block.check() {
+            return Err(FsError::WrongFs);
+        }
+        let free_map = device.load_struct::<[u8; BLKSIZE]>(BLKN_FREEMAP).unwrap();
 
         Ok(SimpleFileSystem {
             super_block: RwLock::new(Dirty::new(super_block)),
@@ -574,7 +603,7 @@ impl SimpleFileSystem {
                 free_map.set(block_id, true);
                 return None
             }
-            super_block.unused_blocks -= 1;    // will panic if underflow
+            super_block.unused_blocks -= 1;    // will not underflow
         }
         id
     }
@@ -609,7 +638,7 @@ impl SimpleFileSystem {
             }
         }
         // Load if not in set, or is weak ref.
-        let disk_inode = Dirty::new(self.device.lock().load_struct::<DiskINode>(id));
+        let disk_inode = Dirty::new(self.device.lock().load_struct::<DiskINode>(id).unwrap());
         self._new_inode(id, disk_inode)
     }
     /// Create a new INode file
@@ -675,7 +704,7 @@ impl Drop for SimpleFileSystem {
     /// Auto sync when drop
     fn drop(&mut self) {
         use vfs::FileSystem;
-        self.sync().expect("failed to sync");
+        self.sync().expect("Failed to sync when dropping the SimpleFileSystem");
     }
 }
 
