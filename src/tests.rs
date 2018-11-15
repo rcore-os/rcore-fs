@@ -35,19 +35,6 @@ fn create_new_sfs() {
     let _root = sfs.root_inode();
 }
 
-// #[test]
-fn print_root() {
-    let sfs = _open_sample_file();
-    let root = sfs.root_inode();
-    println!("{:?}", root);
-
-    let files = root.list().unwrap();
-    println!("{:?}", files);
-    assert_eq!(files[3], root.get_entry(3).unwrap());
-
-    sfs.sync().unwrap();
-}
-
 #[test]
 fn create_file() -> Result<()> {
     let sfs = _create_new_sfs();

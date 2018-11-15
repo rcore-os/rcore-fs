@@ -10,7 +10,7 @@ pub trait Device: Send {
 }
 
 /// ﻿Abstract operations on a inode.
-pub trait INode: Debug + Any + Sync + Send {
+pub trait INode: Any + Sync + Send {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
     fn info(&self) -> Result<FileInfo>;
