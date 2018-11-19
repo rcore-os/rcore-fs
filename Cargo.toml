@@ -2,6 +2,7 @@
 name = "simple-filesystem"
 version = "0.0.1"
 authors = ["WangRunji <wangrunji0408@163.com>"]
+edition = "2018"
 
 [[bin]]
 name = "mksfs"
@@ -10,7 +11,7 @@ required-features = ["std"]
 
 [dependencies]
 bit-vec = { default-features = false, git = "https://github.com/AltSysrq/bit-vec.git" } # default-features contains 'std'
-static_assertions = "0.2.5"
+static_assertions = "0.3"
 spin = "0.4"
 
 [features]

@@ -1,4 +1,4 @@
-use vfs::{INode, Result, FileInfo};
+use crate::vfs::{INode, Result, FileInfo};
 use alloc::{sync::Arc, string::String};
 
 pub struct File {

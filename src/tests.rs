@@ -3,10 +3,10 @@ use std::io::{Read, Write, Seek, SeekFrom};
 use std::boxed::Box;
 use std::sync::Arc;
 use std::mem::uninitialized;
-use super::sfs::*;
-use super::vfs::*;
-use super::vfs::INode;
-use super::structs::{DiskEntry, AsBuf};
+use crate::sfs::*;
+use crate::vfs::*;
+use crate::vfs::INode;
+use crate::structs::{DiskEntry, AsBuf};
 
 fn _open_sample_file() -> Arc<SimpleFileSystem> {
     fs::copy("sfs.img", "test.img").expect("failed to open sfs.img");

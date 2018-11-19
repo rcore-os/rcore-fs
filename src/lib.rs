@@ -1,17 +1,10 @@
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![feature(alloc)]
 #![feature(const_fn)]
 #![feature(nll)]
-#![cfg_attr(target_arch = "riscv", feature(match_default_bindings))]
-#![no_std]
+#![feature(extern_crate_item_prelude)]
 
-#[cfg(any(test, feature = "std"))]
-#[macro_use]
-extern crate std;
 extern crate alloc;
-extern crate bit_vec;
-#[macro_use]
-extern crate static_assertions;
-extern crate spin;
 
 #[cfg(not(test))]
 macro_rules! eprintln {
@@ -30,9 +23,9 @@ mod structs;
 #[cfg(test)]
 mod tests;
 
-pub use sfs::*;
-pub use vfs::*;
-pub use blocked_device::BlockedDevice;
+pub use crate::sfs::*;
+pub use crate::vfs::*;
+pub use crate::blocked_device::BlockedDevice;
 
 #[cfg(any(test, feature = "std"))]
 pub mod std_impl {
