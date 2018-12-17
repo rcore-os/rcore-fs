@@ -4,11 +4,11 @@ use core::mem::uninitialized;
 use core::slice;
 use core::fmt::{Debug, Formatter, Error};
 use core::any::Any;
-use dirty::Dirty;
-use structs::*;
-use vfs::{self, Device, INode, FsError};
-use util::*;
 use spin::{Mutex, RwLock};
+use crate::dirty::Dirty;
+use crate::structs::*;
+use crate::vfs::{self, Device, INode, FileSystem, FsError};
+use crate::util::*;
 
 impl Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
@@ -703,7 +703,6 @@ impl vfs::FileSystem for SimpleFileSystem {
 impl Drop for SimpleFileSystem {
     /// Auto sync when drop
     fn drop(&mut self) {
-        use vfs::FileSystem;
         self.sync().expect("Failed to sync when dropping the SimpleFileSystem");
     }
 }

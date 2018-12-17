@@ -1,10 +1,9 @@
-extern crate simple_filesystem;
-
 use std::env;
 use std::fs;
 use std::io::{Read, Write, Result};
 use std::path::Path;
 use std::mem::uninitialized;
+use std::sync::Arc;
 use simple_filesystem::*;
 
 fn main() -> Result<()> {
@@ -31,7 +30,7 @@ fn zip(path: &Path, img_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn zip_dir(path: &Path, inode: INodePtr) -> Result<()> {
+fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
     let dir = fs::read_dir(path).expect("Failed to open dir");
     for entry in dir {
         let entry = entry?;
@@ -39,19 +38,19 @@ fn zip_dir(path: &Path, inode: INodePtr) -> Result<()> {
         let name = name_.to_str().unwrap();
         let type_ = entry.file_type()?;
         if type_.is_file() {
-            let inode = inode.borrow_mut().create(name, FileType::File).expect("Failed to create INode");
+            let inode = inode.create(name, FileType::File).expect("Failed to create INode");
             let mut file = fs::File::open(entry.path())?;
-            inode.borrow_mut().resize(file.metadata().unwrap().len() as usize).expect("Failed to resize INode");
+            inode.resize(file.metadata().unwrap().len() as usize).expect("Failed to resize INode");
             let mut buf: [u8; 4096] = unsafe { uninitialized() };
             let mut offset = 0usize;
             let mut len = 4096;
             while len == 4096 {
                 len = file.read(&mut buf)?;
-                inode.borrow().write_at(offset, &buf).expect("Failed to write image");
+                inode.write_at(offset, &buf).expect("Failed to write image");
                 offset += len;
             }
         } else if type_.is_dir() {
-            let inode = inode.borrow_mut().create(name, FileType::Dir).expect("Failed to create INode");
+            let inode = inode.create(name, FileType::Dir).expect("Failed to create INode");
             zip_dir(entry.path().as_path(), inode)?;
         }
     }
@@ -66,13 +65,13 @@ fn unzip(path: &Path, img_path: &Path) -> Result<()> {
     unzip_dir(path, inode)
 }
 
-fn unzip_dir(path: &Path, inode: INodePtr) -> Result<()> {
-    let files = inode.borrow().list().expect("Failed to list files from INode");
+fn unzip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
+    let files = inode.list().expect("Failed to list files from INode");
     for name in files.iter().skip(2) {
-        let inode = inode.borrow().lookup(name.as_str()).expect("Failed to lookup");
+        let inode = inode.lookup(name.as_str()).expect("Failed to lookup");
         let mut path = path.to_path_buf();
         path.push(name);
-        let info = inode.borrow().info().expect("Failed to get file info");
+        let info = inode.info().expect("Failed to get file info");
         match info.type_ {
             FileType::File => {
                 let mut file = fs::File::create(&path)?;
@@ -80,7 +79,7 @@ fn unzip_dir(path: &Path, inode: INodePtr) -> Result<()> {
                 let mut offset = 0usize;
                 let mut len = 4096;
                 while len == 4096 {
-                    len = inode.borrow().read_at(offset, buf.as_mut()).expect("Failed to read from INode");
+                    len = inode.read_at(offset, buf.as_mut()).expect("Failed to read from INode");
                     file.write(&buf[..len])?;
                     offset += len;
                 }

@@ -4,6 +4,7 @@ use core::slice;
 use core::mem::{size_of_val, size_of};
 use core::fmt::{Debug, Formatter, Error};
 use alloc::str;
+use static_assertions::const_assert;
 
 /// On-disk superblock
 #[repr(C)]

@@ -2,9 +2,9 @@ use std::fs::{self, OpenOptions};
 use std::boxed::Box;
 use std::sync::Arc;
 use std::mem::uninitialized;
-use super::sfs::*;
-use super::vfs::*;
-use super::structs::AsBuf;
+use crate::sfs::*;
+use crate::vfs::*;
+use crate::structs::AsBuf;
 
 fn _open_sample_file() -> Arc<SimpleFileSystem> {
     fs::copy("sfs.img", "test.img").expect("failed to open sfs.img");
@@ -32,21 +32,6 @@ fn open_sample_file() {
 fn create_new_sfs() {
     let sfs = _create_new_sfs();
     let _root = sfs.root_inode();
-}
-
-#[test]
-#[ignore]
-fn print_root() -> Result<()> {
-    let sfs = _open_sample_file();
-    let root = sfs.root_inode();
-    println!("{:?}", root);
-
-    let files = root.list()?;
-    println!("{:?}", files);
-    assert_eq!(files[3], root.get_entry(3)?);
-
-    sfs.sync()?;
-    Ok(())
 }
 
 #[test]
