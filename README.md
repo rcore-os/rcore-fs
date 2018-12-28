@@ -4,8 +4,6 @@
 
 A Rust implementation for SFS in [ucore_os_lab](https://github.com/chyyuu/ucore_os_lab) lab8.
 
-[uCore with Rust SFS](https://github.com/wangrunji0408/ucore_os_lab/tree/rust-fs/labcodes_answer/lab8_result).
+This is the file system module of [RustOS](https://github.com/wangrunji0408/RustOS).
 
-It will become a part of [RustOS](https://github.com/wangrunji0408/RustOS).
-
-Almost finished.
+It can also be used in the origin ucore_os_lab, see [uCore with Rust SFS](https://github.com/wangrunji0408/ucore_os_lab/tree/rust-fs/labcodes_answer/lab8_result).
