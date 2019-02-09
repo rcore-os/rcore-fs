@@ -1,6 +1,7 @@
 use alloc::{vec::Vec, string::String, sync::Arc};
 use core::any::Any;
 use core::result;
+use time::Timespec;
 
 /// Interface for FS to read & write
 ///     TODO: use std::io::{Read, Write}
@@ -80,15 +81,34 @@ impl INode {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct FileInfo {
-    // Note: for normal file size is the actuate file size
-    // for directory this is count of dirent.
+    /// Inode number
+    pub inode: usize,
+    /// Size in bytes
+    ///
+    /// SFS Note: for normal file size is the actuate file size
+    /// for directory this is count of dirent.
     pub size: usize,
-    pub mode: u32,
-    pub type_: FileType,
+    /// Size in blocks
     pub blocks: usize,
-    // Note: different from linux, "." and ".." count in nlinks
-    // this is same as original ucore.
+    /// Time of last access
+    pub atime: Timespec,
+    /// Time of last modification
+    pub mtime: Timespec,
+    /// Time of last change
+    pub ctime: Timespec,
+    /// Type of file
+    pub type_: FileType,
+    /// Permission
+    pub mode: u16,
+    /// Number of hard links
+    ///
+    /// SFS Note: different from linux, "." and ".." count in nlinks
+    /// this is same as original ucore.
     pub nlinks: usize,
+    /// User id
+    pub uid: usize,
+    /// Group id
+    pub gid: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]

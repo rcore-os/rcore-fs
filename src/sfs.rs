@@ -1,14 +1,17 @@
-use bit_vec::BitVec;
-use alloc::{boxed::Box, vec::Vec, collections::BTreeMap, sync::{Arc, Weak}, string::String};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
+use core::any::Any;
+use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 use core::slice;
-use core::fmt::{Debug, Formatter, Error};
-use core::any::Any;
+
+use bit_vec::BitVec;
 use spin::{Mutex, RwLock};
+use time::Timespec;
+
 use crate::dirty::Dirty;
 use crate::structs::*;
-use crate::vfs::{self, Device, INode, FileSystem, FsError};
 use crate::util::*;
+use crate::vfs::{self, Device, FileSystem, FsError, INode};
 
 impl Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
@@ -265,15 +268,21 @@ impl vfs::INode for INodeImpl {
     fn info(&self) -> vfs::Result<vfs::FileInfo> {
         let disk_inode = self.disk_inode.read();
         Ok(vfs::FileInfo {
+            inode: self.id,
             size: match disk_inode.type_ {
                 FileType::File => disk_inode.size as usize,
                 FileType::Dir => disk_inode.blocks as usize,
                 _ => panic!("Unknown file type"),
             },
-            mode: 0,
+            mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
+            atime: Timespec::new(0, 0),
+            mtime: Timespec::new(0, 0),
+            ctime: Timespec::new(0, 0),
             nlinks: disk_inode.nlinks as usize,
+            uid: 0,
+            gid: 0,
         })
     }
     fn sync(&self) -> vfs::Result<()> {

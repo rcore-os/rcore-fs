@@ -13,6 +13,7 @@ required-features = ["std"]
 bit-vec = { default-features = false, git = "https://github.com/AltSysrq/bit-vec.git" } # default-features contains 'std'
 static_assertions = "0.3"
 spin = "0.4"
+time = "0.1"
 
 [features]
 std = []
