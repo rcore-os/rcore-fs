@@ -8,9 +8,21 @@ use log::*;
 use spin::{Mutex, RwLock};
 
 use crate::dirty::Dirty;
-use crate::structs::*;
 use crate::util::*;
-use crate::vfs::{self, Device, FileSystem, FsError, INode, Timespec};
+use crate::vfs::{self, FileSystem, FsError, INode, Timespec};
+
+use self::structs::*;
+
+mod structs;
+mod std_impl;
+mod blocked_device;
+
+/// Interface for FS to read & write
+///     TODO: use std::io::{Read, Write}
+pub trait Device: Send {
+    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
+    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
+}
 
 impl Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {

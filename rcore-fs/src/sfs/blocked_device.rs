@@ -1,5 +1,5 @@
 use crate::util::*;
-use crate::vfs::Device;
+use super::Device;
 
 /// Device which can only R/W in blocks
 pub trait BlockedDevice: Send {

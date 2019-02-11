@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::mem::uninitialized;
 use crate::sfs::*;
 use crate::vfs::*;
-use crate::structs::AsBuf;
 
 fn _open_sample_file() -> Arc<SimpleFileSystem> {
     fs::copy("sfs.img", "test.img").expect("failed to open sfs.img");
@@ -69,8 +68,7 @@ fn resize() -> Result<()> {
     file1.resize(SIZE1)?;
     assert_eq!(file1.info()?.size, SIZE1, "wrong size after resize");
     let mut data1: [u8; SIZE2] = unsafe { uninitialized() };
-    impl AsBuf for [u8; SIZE2] {}
-    let len = file1.read_at(0, data1.as_buf_mut())?;
+    let len = file1.read_at(0, data1.as_mut())?;
     assert_eq!(len, SIZE1, "wrong size returned by read_at()");
     assert_eq!(&data1[..SIZE1], &[0u8; SIZE1][..], "expanded data should be 0");
 

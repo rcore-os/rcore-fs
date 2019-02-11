@@ -1,14 +1,6 @@
 use alloc::{vec::Vec, string::String, sync::Arc};
 use core::any::Any;
 use core::result;
-pub use super::blocked_device::BlockedDevice;
-
-/// Interface for FS to read & write
-///     TODO: use std::io::{Read, Write}
-pub trait Device: Send {
-    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
-}
 
 /// Abstract operations on a inode.
 pub trait INode: Any + Sync + Send {
@@ -144,6 +136,7 @@ pub enum FsError {
     DirRemoved,//E_NOENT, when the current dir was remove by a previous unlink
     DirNotEmpty,//E_NOTEMPTY
     WrongFs,//E_INVAL, when we find the content on disk is wrong when opening the device
+    DeviceError,
 }
 
 pub type Result<T> = result::Result<T,FsError>;
@@ -153,6 +146,4 @@ pub trait FileSystem: Sync {
     fn sync(&self) -> Result<()>;
     fn root_inode(&self) -> Arc<INode>;
     fn info(&self) -> &'static FsInfo;
-//    fn unmount(&self) -> Result<()>;
-//    fn cleanup(&self);
 }
