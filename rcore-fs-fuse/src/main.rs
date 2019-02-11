@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fuse::{FileAttr, Filesystem, FileType, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyWrite, Request};
-use libc;
-use log::*;
+//use log::*;
 use structopt::StructOpt;
 use time::Timespec;
 
@@ -79,6 +78,7 @@ impl<T: vfs::FileSystem> VfsWrapper<T> {
     }
 }
 
+/// Helper macro to reply error when VFS operation fails
 macro_rules! try_vfs {
     ($reply:expr, $expr:expr) => (match $expr {
         Ok(val) => val,
@@ -90,6 +90,11 @@ macro_rules! try_vfs {
 }
 
 impl<T: vfs::FileSystem> Filesystem for VfsWrapper<T> {
+    fn destroy(&mut self, _req: &Request) {
+        self.inodes.clear();
+        self.fs.sync().unwrap();
+    }
+
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let inode = try_vfs!(reply, self.get_inode(parent));
         let target = try_vfs!(reply, inode.lookup(name.to_str().unwrap()));
@@ -106,7 +111,7 @@ impl<T: vfs::FileSystem> Filesystem for VfsWrapper<T> {
         reply.attr(&TTL, &attr);
     }
 
-    fn mknod(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, _rdev: u32, reply: ReplyEntry) {
+    fn mknod(&mut self, _req: &Request, parent: u64, name: &OsStr, _mode: u32, _rdev: u32, reply: ReplyEntry) {
         let name = name.to_str().unwrap();
         let inode = try_vfs!(reply, self.get_inode(parent));
         let target = try_vfs!(reply, inode.create(name, vfs::FileType::File));
@@ -116,7 +121,7 @@ impl<T: vfs::FileSystem> Filesystem for VfsWrapper<T> {
         reply.entry(&TTL, &attr, 0);
     }
 
-    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
+    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, _mode: u32, reply: ReplyEntry) {
         let name = name.to_str().unwrap();
         let inode = try_vfs!(reply, self.get_inode(parent));
         let target = try_vfs!(reply, inode.create(name, vfs::FileType::Dir));
@@ -168,8 +173,13 @@ impl<T: vfs::FileSystem> Filesystem for VfsWrapper<T> {
         reply.data(data.as_slice());
     }
 
-    fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], flags: u32, reply: ReplyWrite) {
+    fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], _flags: u32, reply: ReplyWrite) {
         let inode = try_vfs!(reply, self.get_inode(ino));
+        let info = try_vfs!(reply, inode.info());
+        let end = offset as usize + data.len();
+        if end > info.size {
+            try_vfs!(reply, inode.resize(end));
+        }
         let len = try_vfs!(reply, inode.write_at(offset as usize, data));
         reply.written(len as u32);
     }

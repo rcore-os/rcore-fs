@@ -10,9 +10,14 @@ path = "src/bin/mksfs.rs"
 required-features = ["std"]
 
 [dependencies]
-bit-vec = { default-features = false, git = "https://github.com/AltSysrq/bit-vec.git" } # default-features contains 'std'
 static_assertions = "0.3"
 spin = "0.4"
+log = "0.4"
+
+[dependencies.bitvec]
+version = "0.9"
+default-features = false
+features = ["alloc"]
 
 [dev-dependencies]
 tempfile = "3"

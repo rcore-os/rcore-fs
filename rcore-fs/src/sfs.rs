@@ -2,9 +2,9 @@ use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
-use core::slice;
 
-use bit_vec::BitVec;
+use bitvec::BitVec;
+use log::*;
 use spin::{Mutex, RwLock};
 
 use crate::dirty::Dirty;
@@ -547,7 +547,7 @@ impl SimpleFileSystem {
 
         Ok(SimpleFileSystem {
             super_block: RwLock::new(Dirty::new(super_block)),
-            free_map: RwLock::new(Dirty::new(BitVec::from_bytes(&free_map))),
+            free_map: RwLock::new(Dirty::new(BitVec::from(free_map.as_ref()))),
             inodes: RwLock::new(BTreeMap::new()),
             device: Mutex::new(device),
             self_ptr: Weak::default(),
@@ -565,7 +565,8 @@ impl SimpleFileSystem {
             info: Str32::from(DEFAULT_INFO),
         };
         let free_map = {
-            let mut bitset = BitVec::from_elem(BLKBITS, false);
+            let mut bitset = BitVec::with_capacity(BLKBITS);
+            bitset.extend(core::iter::repeat(false).take(BLKBITS));
             for i in 3..blocks {
                 bitset.set(i, true);
             }
@@ -592,7 +593,7 @@ impl SimpleFileSystem {
     /// Wrap pure SimpleFileSystem with Arc
     /// Used in constructors
     fn wrap(self) -> Arc<Self> {
-        // Create a Arc, make a Weak from it, then put it into the struct.
+        // Create an Arc, make a Weak from it, then put it into the struct.
         // It's a little tricky.
         let fs = Arc::new(self);
         let weak = Arc::downgrade(&fs);
@@ -612,6 +613,7 @@ impl SimpleFileSystem {
                 return None
             }
             super_block.unused_blocks -= 1;    // will not underflow
+            trace!("alloc block {:#x}", block_id);
         }
         id
     }
@@ -621,6 +623,7 @@ impl SimpleFileSystem {
         assert!(!free_map[block_id]);
         free_map.set(block_id, true);
         self.super_block.write().unused_blocks += 1;
+        trace!("free block {:#x}", block_id);
     }
 
     /// Create a new INode struct, then insert it to self.inodes
@@ -732,12 +735,10 @@ impl BitsetAlloc for BitVec {
 
 impl AsBuf for BitVec {
     fn as_buf(&self) -> &[u8] {
-        let slice = self.storage();
-        unsafe { slice::from_raw_parts(slice as *const _ as *const u8, slice.len() * 4) }
+        self.as_ref()
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
-        let slice = self.storage();
-        unsafe { slice::from_raw_parts_mut(slice as *const _ as *mut u8, slice.len() * 4) }
+        self.as_mut()
     }
 }
 
