@@ -1,7 +1,7 @@
 use alloc::{vec::Vec, string::String, sync::Arc};
 use core::any::Any;
 use core::result;
-use time::Timespec;
+pub use super::blocked_device::BlockedDevice;
 
 /// Interface for FS to read & write
 ///     TODO: use std::io::{Read, Write}
@@ -109,6 +109,12 @@ pub struct FileInfo {
     pub uid: usize,
     /// Group id
     pub gid: usize,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct Timespec {
+    pub sec: i64,
+    pub nsec: i32
 }
 
 #[derive(Debug, Eq, PartialEq)]

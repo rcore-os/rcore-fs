@@ -3,42 +3,32 @@
 //! NOTE: Must link these sections:
 //! `*.got.*` `*.data.*` `*.rodata.*`
 
-#![feature(allocator_api)]
 #![feature(lang_items)]
 #![feature(alloc)]
 #![feature(panic_info_message)]
-#![feature(compiler_builtins_lib)]
 #![no_std]
 
 #[macro_use]
 extern crate alloc;
-extern crate simple_filesystem;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
-extern crate static_assertions;
-#[macro_use]
 extern crate lazy_static;
-extern crate spin;
+#[macro_use]
+extern crate static_assertions;
 
-use alloc::{sync::Arc, boxed::Box, collections::BTreeMap};
-use core::cell::RefCell;
-use core::slice;
-use core::ops::Deref;
-use core::cmp::Ordering;
+use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
 use core::alloc::{GlobalAlloc, Layout};
-use core::mem::{size_of, self};
-use core::ptr;
-use simple_filesystem as sfs;
-use simple_filesystem as vfs;
-use vfs::FileSystem;
+use core::mem;
+use core::ops::Deref;
+use core::slice;
+use simple_filesystem::{sfs, vfs};
 use spin::Mutex;
 
 /// Lang items for bare lib
 mod lang {
-    use alloc::fmt;
-    use core::panic::PanicInfo;
     use core::alloc::Layout;
+    use core::panic::PanicInfo;
 
     #[lang = "eh_personality"]
     #[no_mangle]
@@ -52,7 +42,7 @@ mod lang {
 
     #[panic_handler]
     #[no_mangle]
-    extern fn panic_fmt(info: &PanicInfo) -> ! {
+    extern fn panic(info: &PanicInfo) -> ! {
         use super::ucore::__panic;
         let location = info.location().unwrap();
         let message = info.message().unwrap();
@@ -120,7 +110,6 @@ mod libc {
 
 #[no_mangle]
 pub extern fn sfs_do_mount(dev: *mut Device, fs_store: &mut *mut Fs) -> ErrorCode {
-    use sfs;
     let fs = unsafe { ucore::create_fs_for_sfs(&FS_OPS) };
     debug_assert!(!dev.is_null());
     let mut device = unsafe { Box::from_raw(dev) };  // TODO: fix unsafe
@@ -521,7 +510,7 @@ static INODE_OPS: INodeOps = {
         let pos = pos as usize;
         let info = inode.info().unwrap();
         if pos > info.size {
-            inode.resize(pos);
+            inode.resize(pos).unwrap();
         }
         return ErrorCode::Ok;
     }

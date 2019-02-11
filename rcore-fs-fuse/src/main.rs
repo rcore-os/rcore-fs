@@ -25,15 +25,21 @@ impl<T: vfs::FileSystem> VfsWrapper<T> {
         inodes.insert(1, fs.root_inode());
         VfsWrapper { fs, inodes }
     }
+    fn trans_time(time: vfs::Timespec) -> Timespec {
+        Timespec {
+            sec: time.sec,
+            nsec: time.nsec,
+        }
+    }
     fn trans_attr(info: vfs::FileInfo) -> FileAttr {
         FileAttr {
             ino: info.inode as u64,
             size: info.size as u64,
             blocks: info.blocks as u64,
-            atime: info.atime,
-            mtime: info.mtime,
-            ctime: info.ctime,
-            crtime: Timespec::new(0, 0),
+            atime: Self::trans_time(info.atime),
+            mtime: Self::trans_time(info.mtime),
+            ctime: Self::trans_time(info.ctime),
+            crtime: Timespec { sec: 0, nsec: 0 },
             kind: Self::trans_type(info.type_),
             perm: info.mode,
             nlink: info.nlinks as u32,

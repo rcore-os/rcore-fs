@@ -24,15 +24,11 @@ mod structs;
 #[cfg(test)]
 mod tests;
 
-pub use crate::sfs::*;
-pub use crate::vfs::*;
-pub use crate::blocked_device::BlockedDevice;
-
 #[cfg(any(test, feature = "std"))]
 pub mod std_impl {
     use std::fs::File;
     use std::io::{Read, Write, Seek, SeekFrom};
-    use super::Device;
+    use super::vfs::Device;
 
     impl Device for File {
         fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize> {

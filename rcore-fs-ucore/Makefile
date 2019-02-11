@@ -1,5 +1,5 @@
 ucore:
-	rustup override set nightly
+	rustup override set nightly-2019-01-28
 	cargo xbuild --target ucore.json --release
 
 install-rust:

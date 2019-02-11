@@ -6,12 +6,11 @@ use core::slice;
 
 use bit_vec::BitVec;
 use spin::{Mutex, RwLock};
-use time::Timespec;
 
 use crate::dirty::Dirty;
 use crate::structs::*;
 use crate::util::*;
-use crate::vfs::{self, Device, FileSystem, FsError, INode};
+use crate::vfs::{self, Device, FileSystem, FsError, INode, Timespec};
 
 impl Device {
     fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
@@ -277,9 +276,9 @@ impl vfs::INode for INodeImpl {
             mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
-            atime: Timespec::new(0, 0),
-            mtime: Timespec::new(0, 0),
-            ctime: Timespec::new(0, 0),
+            atime: Timespec { sec: 0, nsec: 0 },
+            mtime: Timespec { sec: 0, nsec: 0 },
+            ctime: Timespec { sec: 0, nsec: 0 },
             nlinks: disk_inode.nlinks as usize,
             uid: 0,
             gid: 0,
