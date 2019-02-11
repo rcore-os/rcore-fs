@@ -16,8 +16,7 @@ fn _open_sample_file() -> Arc<SimpleFileSystem> {
 }
 
 fn _create_new_sfs() -> Arc<SimpleFileSystem> {
-    let file = OpenOptions::new()
-        .read(true).write(true).create(true).open("test.img")
+    let file = tempfile::tempfile()
         .expect("failed to create file");
     SimpleFileSystem::create(Box::new(file), 32 * 4096)
 }

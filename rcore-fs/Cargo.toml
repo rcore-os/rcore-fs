@@ -14,5 +14,8 @@ bit-vec = { default-features = false, git = "https://github.com/AltSysrq/bit-vec
 static_assertions = "0.3"
 spin = "0.4"
 
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 std = []
