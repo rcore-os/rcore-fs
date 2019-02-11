@@ -9,7 +9,7 @@ use fuse::{FileAttr, Filesystem, FileType, ReplyAttr, ReplyData, ReplyDirectory,
 use structopt::StructOpt;
 use time::Timespec;
 
-use rcore_fs::{sfs, vfs};
+use rcore_fs::{sfs, sefs, vfs};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };                     // 1 second
 
@@ -227,10 +227,18 @@ struct Opt {
 fn main() {
     env_logger::init().unwrap();
     let opt = Opt::from_args();
-    let img = OpenOptions::new().read(true).write(true).open(&opt.image)
-        .expect("failed to open image");
-    let sfs = sfs::SimpleFileSystem::open(Box::new(img))
-        .expect("failed to open sfs");
+//    let img = OpenOptions::new().read(true).write(true).open(&opt.image)
+//        .expect("failed to open image");
+    let sfs = if opt.image.is_dir() {
+        let img = sefs::std_impl::StdStorage::new(&opt.image);
+        sefs::SEFS::open(Box::new(img))
+            .expect("failed to open sefs")
+    } else {
+        std::fs::create_dir_all(&opt.image).unwrap();
+        let img = sefs::std_impl::StdStorage::new(&opt.image);
+        sefs::SEFS::create(Box::new(img))
+            .expect("failed to create sefs")
+    };
     fuse::mount(VfsWrapper::new(sfs), &opt.mount_point, &[])
         .expect("failed to mount fs");
 }

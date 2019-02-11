@@ -13,7 +13,7 @@ use crate::vfs::{self, FileSystem, FsError, INode, Timespec};
 use self::structs::*;
 
 mod structs;
-mod std_impl;
+pub mod std_impl;
 
 /// A file stores a normal file or directory.
 ///
@@ -174,21 +174,21 @@ impl vfs::INode for INodeImpl {
     fn info(&self) -> vfs::Result<vfs::FileInfo> {
         let disk_inode = self.disk_inode.read();
         Ok(vfs::FileInfo {
-            inode: 0,
+            inode: self.id,
             size: match disk_inode.type_ {
                 FileType::File => disk_inode.size as usize,
                 FileType::Dir => disk_inode.blocks as usize,
                 _ => panic!("Unknown file type"),
             },
-            mode: 0,
+            mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
-            atime: Timespec { sec: 0, nsec: 0 },
-            mtime: Timespec { sec: 0, nsec: 0 },
-            ctime: Timespec { sec: 0, nsec: 0 },
+            atime: Timespec { sec: disk_inode.atime as i64, nsec: 0 },
+            mtime: Timespec { sec: disk_inode.mtime as i64, nsec: 0 },
+            ctime: Timespec { sec: disk_inode.ctime as i64, nsec: 0 },
             nlinks: disk_inode.nlinks as usize,
-            uid: 0,
-            gid: 0
+            uid: disk_inode.uid as usize,
+            gid: disk_inode.gid as usize,
         })
     }
     fn sync(&self) -> vfs::Result<()> {
