@@ -2,5 +2,5 @@ language: rust
 rust:
   - nightly
 script:
-  - cargo build --bin mksfs --features "std"
+  - cargo build
   - cargo test --verbose -- --test-threads=1

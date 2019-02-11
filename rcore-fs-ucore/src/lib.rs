@@ -22,7 +22,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::mem;
 use core::ops::Deref;
 use core::slice;
-use simple_filesystem::{sfs, vfs};
+use rcore_fs::{sfs, vfs};
 use spin::Mutex;
 
 /// Lang items for bare lib

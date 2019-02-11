@@ -4,7 +4,7 @@ use std::io::{Read, Write, Result};
 use std::path::Path;
 use std::mem::uninitialized;
 use std::sync::Arc;
-use simple_filesystem::*;
+use rcore_fs::{sfs::SimpleFileSystem, vfs::*};
 
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();

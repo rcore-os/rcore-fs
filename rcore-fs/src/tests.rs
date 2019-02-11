@@ -41,11 +41,17 @@ fn create_file() -> Result<()> {
     let file1 = root.create("file1", FileType::File)?;
 
     assert_eq!(file1.info()?, FileInfo {
+        inode: 5,
         size: 0,
         type_: FileType::File,
-        mode: 0,
+        mode: 0o777,
         blocks: 0,
+        atime: Timespec { sec: 0, nsec: 0 },
+        mtime: Timespec { sec: 0, nsec: 0 },
         nlinks: 1,
+        uid: 0,
+        ctime: Timespec { sec: 0, nsec: 0 },
+        gid: 0
     });
 
     sfs.sync()?;

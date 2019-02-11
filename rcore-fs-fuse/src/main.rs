@@ -10,7 +10,7 @@ use log::*;
 use structopt::StructOpt;
 use time::Timespec;
 
-use simple_filesystem::{sfs, vfs};
+use rcore_fs::{sfs, vfs};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };                     // 1 second
 

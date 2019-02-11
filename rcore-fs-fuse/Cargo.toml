@@ -11,4 +11,4 @@ log = "0.4"
 fuse = "0.3"
 structopt = "0.2"
 env_logger = "0.3"
-simple-filesystem = { path = "..", features = ["std"] }
+rcore-fs = { path = "../rcore-fs", features = ["std"] }
