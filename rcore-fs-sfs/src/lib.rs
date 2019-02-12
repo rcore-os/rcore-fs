@@ -1,3 +1,9 @@
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+#![feature(alloc)]
+#![feature(const_str_len)]
+
+extern crate alloc;
+
 use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -5,34 +11,26 @@ use core::mem::uninitialized;
 
 use bitvec::BitVec;
 use log::*;
-use spin::{Mutex, RwLock};
+use spin::RwLock;
 
-use crate::dirty::Dirty;
-use crate::util::*;
-use crate::vfs::{self, FileSystem, FsError, INode, Timespec};
+use rcore_fs::dev::Device;
+use rcore_fs::dirty::Dirty;
+use rcore_fs::util::*;
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
 
 use self::structs::*;
 
 mod structs;
-mod std_impl;
-mod blocked_device;
 
-/// Interface for FS to read & write
-///     TODO: use std::io::{Read, Write}
-pub trait Device: Send {
-    fn read_at(&mut self, offset: usize, buf: &mut [u8]) -> Option<usize>;
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> Option<usize>;
-}
-
-impl Device {
-    fn read_block(&mut self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
+trait DeviceExt: Device {
+    fn read_block(&self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.read_at(id * BLKSIZE + offset, buf) {
             Some(len) if len == buf.len() => Ok(()),
             _ => panic!(),
         }
     }
-    fn write_block(&mut self, id: BlockId, offset: usize, buf: &[u8]) -> vfs::Result<()> {
+    fn write_block(&self, id: BlockId, offset: usize, buf: &[u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.write_at(id * BLKSIZE + offset, buf) {
             Some(len) if len == buf.len() => Ok(()),
@@ -40,11 +38,13 @@ impl Device {
         }
     }
     /// Load struct `T` from given block in device
-    fn load_struct<T: AsBuf>(&mut self, id: BlockId) -> vfs::Result<T> {
+    fn load_struct<T: AsBuf>(&self, id: BlockId) -> vfs::Result<T> {
         let mut s: T = unsafe { uninitialized() };
         self.read_block(id, 0, s.as_buf_mut()).map(|_|{s})
     }
 }
+
+impl DeviceExt for Device {}
 
 /// inode for sfs
 pub struct INodeImpl {
@@ -73,7 +73,7 @@ impl INodeImpl {
                 Ok(disk_inode.direct[id] as BlockId),
             id if id < NDIRECT + BLK_NENTRY => {
                 let mut disk_block_id: u32 = 0;
-                self.fs.device.lock().read_block(
+                self.fs.device.read_block(
                     disk_inode.indirect as usize,
                     ENTRY_SIZE * (id - NDIRECT),
                     disk_block_id.as_buf_mut(),
@@ -93,7 +93,7 @@ impl INodeImpl {
             }
             id if id < NDIRECT + BLK_NENTRY => {
                 let disk_block_id = disk_block_id as u32;
-                self.fs.device.lock().write_block(
+                self.fs.device.write_block(
                     self.disk_inode.read().indirect as usize,
                     ENTRY_SIZE * (id - NDIRECT),
                     disk_block_id.as_buf(),
@@ -215,7 +215,7 @@ impl INodeImpl {
     // Note: the _\w*_at method always return begin>size?0:begin<end?0:(min(size,end)-begin) when success
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
-        where F: FnMut(&mut Box<Device>, &BlockRange, usize) -> vfs::Result<()>
+        where F: FnMut(&Box<Device>, &BlockRange, usize) -> vfs::Result<()>
     {
         let size = self._size();
         let iter = BlockIter {
@@ -228,7 +228,7 @@ impl INodeImpl {
         let mut buf_offset = 0usize;
         for mut range in iter {
             range.block = self.get_disk_block_id(range.block)?;
-            f(&mut *self.fs.device.lock(), &range, buf_offset)?;
+            f(&self.fs.device, &range, buf_offset)?;
             buf_offset += range.len();
         }
         Ok(buf_offset)
@@ -299,7 +299,7 @@ impl vfs::INode for INodeImpl {
     fn sync(&self) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
         if disk_inode.dirty() {
-            self.fs.device.lock().write_block(self.id, 0, disk_inode.as_buf())?;
+            self.fs.device.write_block(self.id, 0, disk_inode.as_buf())?;
             disk_inode.sync();
         }
         Ok(())
@@ -543,14 +543,14 @@ pub struct SimpleFileSystem {
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
-    device: Mutex<Box<Device>>,
+    device: Box<Device>,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SimpleFileSystem>,
 }
 
 impl SimpleFileSystem {
     /// Load SFS from device
-    pub fn open(mut device: Box<Device>) -> vfs::Result<Arc<Self>> {
+    pub fn open(device: Box<Device>) -> vfs::Result<Arc<Self>> {
         let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER).unwrap();
         if !super_block.check() {
             return Err(FsError::WrongFs);
@@ -561,7 +561,7 @@ impl SimpleFileSystem {
             super_block: RwLock::new(Dirty::new(super_block)),
             free_map: RwLock::new(Dirty::new(BitVec::from(free_map.as_ref()))),
             inodes: RwLock::new(BTreeMap::new()),
-            device: Mutex::new(device),
+            device,
             self_ptr: Weak::default(),
         }.wrap())
     }
@@ -589,7 +589,7 @@ impl SimpleFileSystem {
             super_block: RwLock::new(Dirty::new_dirty(super_block)),
             free_map: RwLock::new(Dirty::new_dirty(free_map)),
             inodes: RwLock::new(BTreeMap::new()),
-            device: Mutex::new(device),
+            device,
             self_ptr: Weak::default(),
         }.wrap();
 
@@ -661,7 +661,7 @@ impl SimpleFileSystem {
             }
         }
         // Load if not in set, or is weak ref.
-        let disk_inode = Dirty::new(self.device.lock().load_struct::<DiskINode>(id).unwrap());
+        let disk_inode = Dirty::new(self.device.load_struct::<DiskINode>(id).unwrap());
         self._new_inode(id, disk_inode)
     }
     /// Create a new INode file
@@ -694,12 +694,12 @@ impl vfs::FileSystem for SimpleFileSystem {
     fn sync(&self) -> vfs::Result<()> {
         let mut super_block = self.super_block.write();
         if super_block.dirty() {
-            self.device.lock().write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf()).unwrap();
+            self.device.write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf()).unwrap();
             super_block.sync();
         }
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
-            self.device.lock().write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf()).unwrap();
+            self.device.write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf()).unwrap();
             free_map.sync();
         }
         self.flush_weak_inodes();

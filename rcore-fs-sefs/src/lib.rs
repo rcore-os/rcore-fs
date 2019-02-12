@@ -1,56 +1,25 @@
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+#![feature(alloc)]
+
+extern crate alloc;
+
 use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
-use log::*;
-use spin::{Mutex, RwLock};
+//use log::*;
+use spin::RwLock;
 
-use crate::dirty::Dirty;
-use crate::vfs::{self, FileSystem, FsError, INode, Timespec};
+use rcore_fs::dirty::Dirty;
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
 
+use self::dev::*;
 use self::structs::*;
 
 mod structs;
-pub mod std_impl;
-
-/// A file stores a normal file or directory.
-///
-/// The interface is same as `std::fs::File`.
-pub trait File: Send + Sync {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> DevResult<usize>;
-    fn write_at(&self, buf: &[u8], offset: usize) -> DevResult<usize>;
-    fn set_len(&self, len: usize) -> DevResult<()>;
-    fn flush(&self) -> DevResult<()>;
-
-    fn read_exact_at(&self, buf: &mut [u8], offset: usize) -> DevResult<()> {
-        let len = self.read_at(buf, offset)?;
-        if len == buf.len() { Ok(()) } else { Err(DeviceError) }
-    }
-    fn write_all_at(&self, buf: &[u8], offset: usize) -> DevResult<()> {
-        let len = self.write_at(buf, offset)?;
-        if len == buf.len() { Ok(()) } else { Err(DeviceError) }
-    }
-}
-
-/// The collection of all files in the FS.
-pub trait Storage: Send + Sync {
-    fn open(&self, file_id: usize) -> DevResult<Box<File>>;
-    fn create(&self, file_id: usize) -> DevResult<Box<File>>;
-    fn remove(&self, file_id: usize) -> DevResult<()>;
-}
-
-#[derive(Debug)]
-pub struct DeviceError;
-
-pub type DevResult<T> = Result<T, DeviceError>;
-
-impl From<DeviceError> for FsError {
-    fn from(_: DeviceError) -> Self {
-        FsError::DeviceError
-    }
-}
+pub mod dev;
 
 /// Helper methods for `File`
 impl File {
@@ -413,7 +382,7 @@ impl Drop for INodeImpl {
         if self.disk_inode.read().nlinks <= 0 {
             self.disk_inode.write().sync();
             self.fs.free_block(self.id);
-            self.fs.device.remove(self.id);
+            self.fs.device.remove(self.id).unwrap();
         }
     }
 }

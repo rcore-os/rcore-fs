@@ -4,11 +4,10 @@
 
 extern crate alloc;
 
-mod dirty;
-mod util;
+pub mod dirty;
+pub mod util;
 pub mod vfs;
-pub mod sfs;
-pub mod sefs;
+pub mod dev;
 pub mod file;
 #[cfg(test)]
 mod tests;

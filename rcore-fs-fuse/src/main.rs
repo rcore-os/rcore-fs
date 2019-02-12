@@ -9,7 +9,9 @@ use fuse::{FileAttr, Filesystem, FileType, ReplyAttr, ReplyData, ReplyDirectory,
 use structopt::StructOpt;
 use time::Timespec;
 
-use rcore_fs::{sfs, sefs, vfs};
+use rcore_fs::vfs;
+use rcore_fs_sfs as sfs;
+use rcore_fs_sefs as sefs;
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };                     // 1 second
 
@@ -230,12 +232,12 @@ fn main() {
 //    let img = OpenOptions::new().read(true).write(true).open(&opt.image)
 //        .expect("failed to open image");
     let sfs = if opt.image.is_dir() {
-        let img = sefs::std_impl::StdStorage::new(&opt.image);
+        let img = sefs::dev::StdStorage::new(&opt.image);
         sefs::SEFS::open(Box::new(img))
             .expect("failed to open sefs")
     } else {
         std::fs::create_dir_all(&opt.image).unwrap();
-        let img = sefs::std_impl::StdStorage::new(&opt.image);
+        let img = sefs::dev::StdStorage::new(&opt.image);
         sefs::SEFS::create(Box::new(img))
             .expect("failed to create sefs")
     };

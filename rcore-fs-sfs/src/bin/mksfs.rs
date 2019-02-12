@@ -3,8 +3,10 @@ use std::fs;
 use std::io::{Read, Write, Result};
 use std::path::Path;
 use std::mem::uninitialized;
-use std::sync::Arc;
-use rcore_fs::{sfs::SimpleFileSystem, vfs::*};
+use std::sync::{Arc, Mutex};
+
+use rcore_fs::vfs::*;
+use rcore_fs_sfs::SimpleFileSystem;
 
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();
@@ -23,6 +25,7 @@ fn main() -> Result<()> {
 
 fn zip(path: &Path, img_path: &Path) -> Result<()> {
     let img = fs::OpenOptions::new().read(true).write(true).create(true).open(img_path)?;
+    let img = Mutex::new(img);
     let sfs = SimpleFileSystem::create(Box::new(img), 0x1000000);
     let inode = sfs.root_inode();
     zip_dir(path, inode)?;
@@ -59,6 +62,7 @@ fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
 
 fn unzip(path: &Path, img_path: &Path) -> Result<()> {
     let img = fs::File::open(img_path)?;
+    let img = Mutex::new(img);
     let sfs = SimpleFileSystem::open(Box::new(img)).expect("Failed to open sfs");
     let inode = sfs.root_inode();
     fs::create_dir(&path)?;
