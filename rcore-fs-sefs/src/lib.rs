@@ -3,6 +3,10 @@
 
 extern crate alloc;
 
+#[cfg(feature = "sgx")]
+#[macro_use]
+extern crate sgx_tstd as std;
+
 use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
