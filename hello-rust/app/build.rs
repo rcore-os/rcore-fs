@@ -29,6 +29,8 @@
 use std::env;
 
 fn main () {
+    println!("cargo:rerun-if-env-changed=SGX_SDK");
+    println!("cargo:rerun-if-env-changed=SGX_MODE");
 
     let sdk_dir = env::var("SGX_SDK")
                     .unwrap_or_else(|_| "/opt/intel/sgxsdk".to_string());

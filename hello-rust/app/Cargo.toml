@@ -3,8 +3,14 @@ name = "app"
 version = "1.0.0"
 authors = ["Baidu"]
 build = "build.rs"
+edition = "2018"
 
 [dependencies]
 sgx_types = "1.0.6"
 sgx_urts = "1.0.6"
 dirs = "1.0.2"
+fuse = "0.3"
+structopt = "0.2"
+env_logger = "0.3"
+rcore-fs-fuse = { path = "../../rcore-fs-fuse" }
+rcore-fs-sefs = { path = "../../rcore-fs-sefs" }

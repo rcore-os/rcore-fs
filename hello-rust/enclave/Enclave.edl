@@ -39,6 +39,12 @@ enclave {
     trusted {
         /* define ECALLs here. */
 
-        public sgx_status_t say_something([in, size=len] const uint8_t* some_string, size_t len);
+        public int ecall_set_sefs_dir([in, size=len] const char* path, size_t len);
+        public int ecall_file_open(size_t fd);
+        public int ecall_file_close(size_t fd);
+        public int ecall_file_flush(size_t fd);
+        public int ecall_file_read_at(size_t fd, size_t offset, [out, size=len] uint8_t* buf, size_t len);
+        public int ecall_file_write_at(size_t fd, size_t offset, [in, size=len] const uint8_t* buf, size_t len);
+        public int ecall_file_set_len(size_t fd, size_t len);
     };
 };

@@ -445,6 +445,7 @@ impl SEFS {
             bitset
         };
         let meta_file = device.create(0)?;
+        meta_file.set_len(blocks * BLKSIZE)?;
 
         let sefs = SEFS {
             super_block: RwLock::new(Dirty::new_dirty(super_block)),
