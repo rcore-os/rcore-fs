@@ -1,10 +1,15 @@
 #![cfg(feature = "sgx")]
 
 use std::boxed::Box;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sgxfs::{SgxFile as File, OpenOptions, remove};
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::sgxfs::{OpenOptions, remove, SgxFile as File};
 use std::sync::SgxMutex as Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use rcore_fs::dev::TimeProvider;
+use rcore_fs::vfs::Timespec;
+
 use super::{DeviceError, DevResult};
 
 pub struct StdStorage {
@@ -86,5 +91,17 @@ impl super::File for LockedFile {
         let mut file = self.0.lock().unwrap();
         file.flush()?;
         Ok(())
+    }
+}
+
+pub struct SgxTimeProvider;
+
+impl TimeProvider for StdTimeProvider {
+    fn current_time(&self) -> Timespec {
+        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        Timespec {
+            sec: duration.as_secs() as i64,
+            nsec: duration.subsec_nanos() as i32,
+        }
     }
 }

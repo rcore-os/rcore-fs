@@ -32,6 +32,7 @@ use structopt::StructOpt;
 
 use rcore_fs_fuse::VfsFuse;
 use rcore_fs_sefs as sefs;
+use rcore_fs::dev::std_impl::StdTimeProvider;
 
 mod sgx_dev;
 mod enclave;
@@ -64,12 +65,12 @@ fn main() {
 
     let sfs = if opt.image.is_dir() {
         let img = sgx_dev::SgxStorage::new(enclave.geteid(), &opt.image);
-        sefs::SEFS::open(Box::new(img))
+        sefs::SEFS::open(Box::new(img), &StdTimeProvider)
             .expect("failed to open sefs")
     } else {
         std::fs::create_dir_all(&opt.image).unwrap();
         let img = sgx_dev::SgxStorage::new(enclave.geteid(), &opt.image);
-        sefs::SEFS::create(Box::new(img))
+        sefs::SEFS::create(Box::new(img), &StdTimeProvider)
             .expect("failed to create sefs")
     };
     fuse::mount(VfsFuse::new(sfs), &opt.mount_point, &[])

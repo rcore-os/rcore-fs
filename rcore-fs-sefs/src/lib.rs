@@ -2,7 +2,6 @@
 #![feature(alloc)]
 
 extern crate alloc;
-
 #[cfg(feature = "sgx")]
 #[macro_use]
 extern crate sgx_tstd as std;
@@ -13,11 +12,11 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
-//use log::*;
-use spin::RwLock;
-
+use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
+//use log::*;
+use spin::RwLock;
 
 use self::dev::*;
 use self::structs::*;
@@ -153,7 +152,7 @@ impl vfs::INode for INodeImpl {
                 FileType::Dir => disk_inode.blocks as usize,
                 _ => panic!("Unknown file type"),
             },
-            mode: 0o777,
+            mode: disk_inode.mode,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
             atime: Timespec { sec: disk_inode.atime as i64, nsec: 0 },
@@ -180,7 +179,12 @@ impl vfs::INode for INodeImpl {
         self.disk_inode.write().size = len as u32;
         Ok(())
     }
-    fn create(&self, name: &str, type_: vfs::FileType) -> vfs::Result<Arc<vfs::INode>> {
+    fn create(&self, name: &str, type_: vfs::FileType, mode: u32) -> vfs::Result<Arc<vfs::INode>> {
+        let type_ = match type_ {
+            vfs::FileType::File => FileType::File,
+            vfs::FileType::Dir => FileType::Dir,
+            _ => return Err(vfs::FsError::InvalidParam),
+        };
         let info = self.info()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -195,10 +199,10 @@ impl vfs::INode for INodeImpl {
         }
 
         // Create new INode
-        let inode = match type_ {
-            vfs::FileType::File => self.fs.new_inode_file()?,
-            vfs::FileType::Dir => self.fs.new_inode_dir(self.id)?,
-        };
+        let inode = self.fs.new_inode(type_, mode as u16)?;
+        if type_ == FileType::Dir {
+            inode.dirent_init(self.id)?;
+        }
 
         // Write new entry
         let entry = DiskEntry {
@@ -207,7 +211,7 @@ impl vfs::INode for INodeImpl {
         };
         self.dirent_append(&entry)?;
         inode.nlinks_inc();
-        if type_ == vfs::FileType::Dir {
+        if type_ == FileType::Dir {
             inode.nlinks_inc(); //for .
             self.nlinks_inc();  //for ..
         }
@@ -404,13 +408,15 @@ pub struct SEFS {
     device: Box<Storage>,
     /// metadata file
     meta_file: Box<File>,
+    /// Time provider
+    time_provider: &'static TimeProvider,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SEFS>,
 }
 
 impl SEFS {
     /// Load SEFS
-    pub fn open(device: Box<Storage>) -> vfs::Result<Arc<Self>> {
+    pub fn open(device: Box<Storage>, time_provider: &'static TimeProvider) -> vfs::Result<Arc<Self>> {
         let meta_file = device.open(0)?;
         let super_block = meta_file.load_struct::<SuperBlock>(BLKN_SUPER)?;
         if !super_block.check() {
@@ -424,22 +430,23 @@ impl SEFS {
             inodes: RwLock::new(BTreeMap::new()),
             device,
             meta_file,
+            time_provider,
             self_ptr: Weak::default(),
         }.wrap())
     }
     /// Create a new SEFS
-    pub fn create(device: Box<Storage>) -> vfs::Result<Arc<Self>> {
+    pub fn create(device: Box<Storage>, time_provider: &'static TimeProvider) -> vfs::Result<Arc<Self>> {
         let blocks = BLKBITS;
 
         let super_block = SuperBlock {
             magic: MAGIC,
             blocks: blocks as u32,
-            unused_blocks: blocks as u32 - 3,
+            unused_blocks: blocks as u32 - 2,
         };
         let free_map = {
             let mut bitset = BitVec::with_capacity(BLKBITS);
             bitset.extend(core::iter::repeat(false).take(BLKBITS));
-            for i in 3..blocks {
+            for i in 2..blocks {
                 bitset.set(i, true);
             }
             bitset
@@ -453,11 +460,13 @@ impl SEFS {
             inodes: RwLock::new(BTreeMap::new()),
             device,
             meta_file,
+            time_provider,
             self_ptr: Weak::default(),
         }.wrap();
 
         // Init root INode
-        let root = sefs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()), true);
+        let root = sefs.new_inode(FileType::Dir, 0o777)?;
+        assert_eq!(root.id, BLKN_ROOT);
         root.dirent_init(BLKN_ROOT)?;
         root.nlinks_inc();  //for .
         root.nlinks_inc();  //for ..(root's parent is itself)
@@ -530,18 +539,22 @@ impl SEFS {
         self._new_inode(id, disk_inode, false)
     }
     /// Create a new INode file
-    fn new_inode_file(&self) -> vfs::Result<Arc<INodeImpl>> {
+    fn new_inode(&self, type_: FileType, mode: u16) -> vfs::Result<Arc<INodeImpl>> {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
-        let disk_inode = Dirty::new_dirty(DiskINode::new_file());
+        let time = self.time_provider.current_time().sec as u32;
+        let disk_inode = Dirty::new_dirty(DiskINode {
+            size: 0,
+            type_,
+            mode,
+            nlinks: 0,
+            blocks: 0,
+            uid: 0,
+            gid: 0,
+            atime: time,
+            mtime: time,
+            ctime: time,
+        });
         Ok(self._new_inode(id, disk_inode, true))
-    }
-    /// Create a new INode dir
-    fn new_inode_dir(&self, parent: INodeId) -> vfs::Result<Arc<INodeImpl>> {
-        let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
-        let disk_inode = Dirty::new_dirty(DiskINode::new_dir());
-        let inode = self._new_inode(id, disk_inode, true);
-        inode.dirent_init(parent)?;
-        Ok(inode)
     }
     fn flush_weak_inodes(&self) {
         let mut inodes = self.inodes.write();

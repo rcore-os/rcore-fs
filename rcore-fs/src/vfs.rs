@@ -9,7 +9,7 @@ pub trait INode: Any + Sync + Send {
     fn info(&self) -> Result<FileInfo>;
     fn sync(&self) -> Result<()>;
     fn resize(&self, len: usize) -> Result<()>;
-    fn create(&self, name: &str, type_: FileType) -> Result<Arc<INode>>;
+    fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>;
     fn unlink(&self, name: &str) -> Result<()>;
     /// user of the vfs api should call borrow_mut by itself
     fn link(&self, name: &str, other: &Arc<INode>) -> Result<()>;
@@ -113,6 +113,9 @@ pub struct Timespec {
 pub enum FileType {
     File,
     Dir,
+    SymLink,
+    CharDevice,
+    BlockDevice,
 }
 
 #[derive(Debug)]

@@ -47,6 +47,9 @@ impl<T: vfs::FileSystem> VfsFuse<T> {
         match type_ {
             vfs::FileType::File => FileType::RegularFile,
             vfs::FileType::Dir => FileType::Directory,
+            vfs::FileType::SymLink => FileType::Symlink,
+            vfs::FileType::CharDevice => FileType::CharDevice,
+            vfs::FileType::BlockDevice => FileType::BlockDevice,
         }
     }
     fn trans_error(err: vfs::FsError) -> i32 {
@@ -106,20 +109,20 @@ impl<T: vfs::FileSystem> Filesystem for VfsFuse<T> {
         reply.attr(&TTL, &attr);
     }
 
-    fn mknod(&mut self, _req: &Request, parent: u64, name: &OsStr, _mode: u32, _rdev: u32, reply: ReplyEntry) {
+    fn mknod(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, _rdev: u32, reply: ReplyEntry) {
         let name = name.to_str().unwrap();
         let inode = try_vfs!(reply, self.get_inode(parent));
-        let target = try_vfs!(reply, inode.create(name, vfs::FileType::File));
+        let target = try_vfs!(reply, inode.create(name, vfs::FileType::File, mode));
         let info = try_vfs!(reply, target.info());
         self.inodes.insert(info.inode, target);
         let attr = Self::trans_attr(info);
         reply.entry(&TTL, &attr, 0);
     }
 
-    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, _mode: u32, reply: ReplyEntry) {
+    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
         let name = name.to_str().unwrap();
         let inode = try_vfs!(reply, self.get_inode(parent));
-        let target = try_vfs!(reply, inode.create(name, vfs::FileType::Dir));
+        let target = try_vfs!(reply, inode.create(name, vfs::FileType::Dir, mode));
         let info = try_vfs!(reply, target.info());
         let attr = Self::trans_attr(info);
         reply.entry(&TTL, &attr, 0);

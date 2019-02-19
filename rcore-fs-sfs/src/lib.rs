@@ -310,7 +310,7 @@ impl vfs::INode for INodeImpl {
         }
         self._resize(len)
     }
-    fn create(&self, name: &str, type_: vfs::FileType) -> vfs::Result<Arc<vfs::INode>> {
+    fn create(&self, name: &str, type_: vfs::FileType, _mode: u32) -> vfs::Result<Arc<vfs::INode>> {
         let info = self.info()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -328,6 +328,7 @@ impl vfs::INode for INodeImpl {
         let inode = match type_ {
             vfs::FileType::File => self.fs.new_inode_file()?,
             vfs::FileType::Dir => self.fs.new_inode_dir(self.id)?,
+            _ => return Err(vfs::FsError::InvalidParam),
         };
 
         // Write new entry

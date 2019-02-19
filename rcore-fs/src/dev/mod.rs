@@ -1,6 +1,12 @@
 use crate::util::*;
+use crate::vfs::Timespec;
 
-mod std_impl;
+pub mod std_impl;
+
+/// A current time provider
+pub trait TimeProvider: Send + Sync {
+    fn current_time(&self) -> Timespec;
+}
 
 /// Interface for FS to read & write
 ///     TODO: use std::io::{Read, Write}

@@ -26,6 +26,8 @@ pub struct DiskINode {
     pub size: u32,
     /// one of SYS_TYPE_* above
     pub type_: FileType,
+    /// permission
+    pub mode: u16,
     /// number of hard links to this file
     /// Note: "." and ".." is counted in this nlinks
     pub nlinks: u16,
@@ -76,35 +78,6 @@ impl<'a> From<&'a str> for Str256 {
 impl SuperBlock {
     pub fn check(&self) -> bool {
         self.magic == MAGIC
-    }
-}
-
-impl DiskINode {
-    pub const fn new_file() -> Self {
-        DiskINode {
-            size: 0,
-            type_: FileType::File,
-            nlinks: 0,
-            blocks: 0,
-            uid: 0,
-            gid: 0,
-            atime: 0,
-            mtime: 0,
-            ctime: 0
-        }
-    }
-    pub const fn new_dir() -> Self {
-        DiskINode {
-            size: 0,
-            type_: FileType::Dir,
-            nlinks: 0,
-            blocks: 0,
-            uid: 0,
-            gid: 0,
-            atime: 0,
-            mtime: 0,
-            ctime: 0
-        }
     }
 }
 

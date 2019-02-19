@@ -14,3 +14,4 @@ structopt = "0.2"
 env_logger = "0.3"
 rcore-fs-fuse = { path = "../../rcore-fs-fuse" }
 rcore-fs-sefs = { path = "../../rcore-fs-sefs" }
+rcore-fs = { path = "../../rcore-fs", features = ["std"] }
