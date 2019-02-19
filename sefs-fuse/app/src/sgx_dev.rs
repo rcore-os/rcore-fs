@@ -21,14 +21,14 @@ impl SgxStorage {
 
 impl Storage for SgxStorage {
     fn open(&self, file_id: usize) -> DevResult<Box<File>> {
-        match file_open(file_id) {
+        match file_open(file_id, false, &[0u8; 16]) {
             0 => Ok(Box::new(SgxFile { fd: file_id })),
             _ => panic!(),
         }
     }
 
     fn create(&self, file_id: usize) -> DevResult<Box<File>> {
-        match file_open(file_id) {
+        match file_open(file_id, true, &[0u8; 16]) {
             0 => Ok(Box::new(SgxFile { fd: file_id })),
             _ => panic!(),
         }
@@ -87,7 +87,7 @@ impl Drop for SgxFile {
 /// Ecall functions to access SgxFile
 extern {
     fn ecall_set_sefs_dir(eid: sgx_enclave_id_t, retval: *mut i32, path: *const u8, len: size_t) -> sgx_status_t;
-    fn ecall_file_open(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t) -> sgx_status_t;
+    fn ecall_file_open(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t, create: uint8_t, key: *const sgx_key_128bit_t) -> sgx_status_t;
     fn ecall_file_close(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t) -> sgx_status_t;
     fn ecall_file_flush(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t) -> sgx_status_t;
     fn ecall_file_read_at(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t, offset: size_t, buf: *mut uint8_t, len: size_t) -> sgx_status_t;
@@ -107,10 +107,10 @@ fn set_sefs_dir(path: &str) -> i32 {
     ret_val
 }
 
-fn file_open(fd: usize) -> i32 {
+fn file_open(fd: usize, create: bool, key: &sgx_key_128bit_t) -> i32 {
     let mut ret_val = -1;
     unsafe {
-        let ret = ecall_file_open(EID, &mut ret_val, fd);
+        let ret = ecall_file_open(EID, &mut ret_val, fd, create as uint8_t, key);
         assert_eq!(ret, sgx_status_t::SGX_SUCCESS);
     }
     ret_val

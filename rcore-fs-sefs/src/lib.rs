@@ -457,7 +457,7 @@ impl SEFS {
         }.wrap();
 
         // Init root INode
-        let root = sefs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
+        let root = sefs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()), true);
         root.dirent_init(BLKN_ROOT)?;
         root.nlinks_inc();  //for .
         root.nlinks_inc();  //for ..(root's parent is itself)
@@ -501,11 +501,14 @@ impl SEFS {
 
     /// Create a new INode struct, then insert it to self.inodes
     /// Private used for load or create INode
-    fn _new_inode(&self, id: INodeId, disk_inode: Dirty<DiskINode>) -> Arc<INodeImpl> {
+    fn _new_inode(&self, id: INodeId, disk_inode: Dirty<DiskINode>, create: bool) -> Arc<INodeImpl> {
         let inode = Arc::new(INodeImpl {
             id,
             disk_inode: RwLock::new(disk_inode),
-            file: self.device.create(id).unwrap(),
+            file: match create {
+                true => self.device.create(id).unwrap(),
+                false => self.device.open(id).unwrap(),
+            },
             fs: self.self_ptr.upgrade().unwrap(),
         });
         self.inodes.write().insert(id, Arc::downgrade(&inode));
@@ -524,19 +527,19 @@ impl SEFS {
         }
         // Load if not in set, or is weak ref.
         let disk_inode = Dirty::new(self.meta_file.load_struct::<DiskINode>(id).unwrap());
-        self._new_inode(id, disk_inode)
+        self._new_inode(id, disk_inode, false)
     }
     /// Create a new INode file
     fn new_inode_file(&self) -> vfs::Result<Arc<INodeImpl>> {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
         let disk_inode = Dirty::new_dirty(DiskINode::new_file());
-        Ok(self._new_inode(id, disk_inode))
+        Ok(self._new_inode(id, disk_inode, true))
     }
     /// Create a new INode dir
     fn new_inode_dir(&self, parent: INodeId) -> vfs::Result<Arc<INodeImpl>> {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
         let disk_inode = Dirty::new_dirty(DiskINode::new_dir());
-        let inode = self._new_inode(id, disk_inode);
+        let inode = self._new_inode(id, disk_inode, true);
         inode.dirent_init(parent)?;
         Ok(inode)
     }

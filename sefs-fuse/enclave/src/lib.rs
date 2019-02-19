@@ -45,6 +45,7 @@ use std::path::PathBuf;
 use std::sgxfs::{OpenOptions, SgxFile};
 use std::sync::{SgxMutex as Mutex, SgxRwLock as RwLock};
 use std::vec::Vec;
+use sgx_types::sgx_key_128bit_t;
 
 #[no_mangle]
 pub extern "C" fn ecall_set_sefs_dir(path: *const u8, len: usize) -> i32 {
@@ -67,10 +68,15 @@ macro_rules! try_io {
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_open(fd: usize) -> i32 {
+pub extern "C" fn ecall_file_open(fd: usize, create: bool, key: &sgx_key_128bit_t) -> i32 {
     let path = get_path(fd);
-    let file = try_io!(OpenOptions::new().append(true).update(true).binary(true).open(&path));
-    println!("open fd = {}", fd);
+    let mut oo = OpenOptions::new();
+    match create {
+        true => oo.write(true).update(true).binary(true),
+        false => oo.read(true).update(true).binary(true),
+    };
+    let file = try_io!(oo.open_ex(&path, key));
+    println!("{} fd = {} key = {:?}", if create {"create"} else {"open"}, fd, key);
     let file = LockedFile(Mutex::new(file));
     let mut files = FILES.write().unwrap();
     files.insert(fd, file);
@@ -102,12 +108,10 @@ pub extern "C" fn ecall_file_read_at(fd: usize, offset: usize, buf: *mut u8, len
     let offset = offset as u64;
     println!("read_at fd = {}, offset = {}, len = {}", fd, offset, len);
     try_io!(file.seek(SeekFrom::Start(offset)));
-    println!("pos = {}", try_io!(file.seek(SeekFrom::Current(0))));
 
     let buf = unsafe { std::slice::from_raw_parts_mut(buf, len) };
     let len = try_io!(file.read(buf)) as i32;
     println!("{:?}", buf);
-    println!("end pos = {}", try_io!(file.seek(SeekFrom::Current(0))));
 
     len
 }
@@ -120,11 +124,9 @@ pub extern "C" fn ecall_file_write_at(fd: usize, offset: usize, buf: *const u8, 
     let offset = offset as u64;
     println!("write_at fd = {}, offset = {}, len = {}", fd, offset, len);
     try_io!(file.seek(SeekFrom::Start(offset)));
-    println!("pos = {}", try_io!(file.seek(SeekFrom::Current(0))));
     let buf = unsafe { std::slice::from_raw_parts(buf, len) };
     let ret = try_io!(file.write(buf)) as i32;
     println!("{:?}", buf);
-    println!("end pos = {}", try_io!(file.seek(SeekFrom::Current(0))));
 
     ret
 }

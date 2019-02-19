@@ -30,6 +30,7 @@
  */
 
 enclave {
+    include "sgx_key.h"
     from "sgx_tstd.edl" import *;
     from "sgx_stdio.edl" import *;
     from "sgx_backtrace.edl" import *;
@@ -40,7 +41,7 @@ enclave {
         /* define ECALLs here. */
 
         public int ecall_set_sefs_dir([in, size=len] const char* path, size_t len);
-        public int ecall_file_open(size_t fd);
+        public int ecall_file_open(size_t fd, uint8_t create, [in] sgx_key_128bit_t* key);
         public int ecall_file_close(size_t fd);
         public int ecall_file_flush(size_t fd);
         public int ecall_file_read_at(size_t fd, size_t offset, [out, size=len] uint8_t* buf, size_t len);
