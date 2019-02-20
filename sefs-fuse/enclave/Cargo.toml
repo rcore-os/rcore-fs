@@ -2,6 +2,7 @@
 name = "Helloworldsampleenclave"
 version = "1.0.0"
 authors = ["Baidu"]
+edition = "2018"
 
 [lib]
 name = "helloworldsampleenclave"
@@ -11,6 +12,7 @@ crate-type = ["staticlib"]
 default = []
 
 [dependencies]
+log = "0.4"
 lazy_static = { version = "1.1.0", features = ["spin_no_std"] } # Implies nightly
 
 [target.'cfg(not(target_env = "sgx"))'.dependencies]

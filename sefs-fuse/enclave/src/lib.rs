@@ -34,10 +34,11 @@
 
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
 #[cfg(not(target_env = "sgx"))]
 #[macro_use]
 extern crate sgx_tstd as std;
-extern crate sgx_types;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -76,7 +77,7 @@ pub extern "C" fn ecall_file_open(fd: usize, create: bool, key: &sgx_key_128bit_
         false => oo.read(true).update(true).binary(true),
     };
     let file = try_io!(oo.open_ex(&path, key));
-    println!("{} fd = {} key = {:?}", if create {"create"} else {"open"}, fd, key);
+    debug!("{} fd = {} key = {:?}", if create {"create"} else {"open"}, fd, key);
     let file = LockedFile(Mutex::new(file));
     let mut files = FILES.write().unwrap();
     files.insert(fd, file);
@@ -87,7 +88,7 @@ pub extern "C" fn ecall_file_open(fd: usize, create: bool, key: &sgx_key_128bit_
 pub extern "C" fn ecall_file_close(fd: usize) -> i32 {
     let mut files = FILES.write().unwrap();
     files.remove(&fd);
-    println!("close fd = {}", fd);
+    debug!("close fd = {}", fd);
     0
 }
 
@@ -95,7 +96,7 @@ pub extern "C" fn ecall_file_close(fd: usize) -> i32 {
 pub extern "C" fn ecall_file_flush(fd: usize) -> i32 {
     let files = FILES.read().unwrap();
     let mut file = files[&fd].0.lock().unwrap();
-    println!("flush fd = {}", fd);
+    debug!("flush fd = {}", fd);
     try_io!(file.flush());
     0
 }
@@ -106,12 +107,12 @@ pub extern "C" fn ecall_file_read_at(fd: usize, offset: usize, buf: *mut u8, len
     let mut file = files[&fd].0.lock().unwrap();
 
     let offset = offset as u64;
-    println!("read_at fd = {}, offset = {}, len = {}", fd, offset, len);
+    debug!("read_at fd = {}, offset = {}, len = {}", fd, offset, len);
     try_io!(file.seek(SeekFrom::Start(offset)));
 
     let buf = unsafe { std::slice::from_raw_parts_mut(buf, len) };
     let len = try_io!(file.read(buf)) as i32;
-    println!("{:?}", buf);
+    trace!("{:?}", buf);
 
     len
 }
@@ -122,11 +123,11 @@ pub extern "C" fn ecall_file_write_at(fd: usize, offset: usize, buf: *const u8, 
     let mut file = files[&fd].0.lock().unwrap();
 
     let offset = offset as u64;
-    println!("write_at fd = {}, offset = {}, len = {}", fd, offset, len);
+    debug!("write_at fd = {}, offset = {}, len = {}", fd, offset, len);
     try_io!(file.seek(SeekFrom::Start(offset)));
     let buf = unsafe { std::slice::from_raw_parts(buf, len) };
     let ret = try_io!(file.write(buf)) as i32;
-    println!("{:?}", buf);
+    trace!("{:?}", buf);
 
     ret
 }
@@ -136,7 +137,7 @@ pub extern "C" fn ecall_file_set_len(fd: usize, len: usize) -> i32 {
     let files = FILES.read().unwrap();
     let mut file = files[&fd].0.lock().unwrap();
 
-    println!("set_len fd = {}, len = {}", fd, len);
+    debug!("set_len fd = {}, len = {}", fd, len);
     let current_len = try_io!(file.seek(SeekFrom::End(0))) as usize;
     if current_len < len {
         let mut zeros = Vec::<u8>::new();
