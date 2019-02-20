@@ -276,9 +276,10 @@ impl vfs::INode for INodeImpl {
         self._write_at(offset, buf)
     }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
-    fn info(&self) -> vfs::Result<vfs::FileInfo> {
+    fn metadata(&self) -> vfs::Result<vfs::Metadata> {
         let disk_inode = self.disk_inode.read();
-        Ok(vfs::FileInfo {
+        Ok(vfs::Metadata {
+            dev: 0,
             inode: self.id,
             size: match disk_inode.type_ {
                 FileType::File => disk_inode.size as usize,
@@ -294,6 +295,7 @@ impl vfs::INode for INodeImpl {
             nlinks: disk_inode.nlinks as usize,
             uid: 0,
             gid: 0,
+            blk_size: BLKSIZE,
         })
     }
     fn sync(&self) -> vfs::Result<()> {
@@ -311,7 +313,7 @@ impl vfs::INode for INodeImpl {
         self._resize(len)
     }
     fn create(&self, name: &str, type_: vfs::FileType, _mode: u32) -> vfs::Result<Arc<vfs::INode>> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir);
         }
@@ -348,7 +350,7 @@ impl vfs::INode for INodeImpl {
         Ok(inode)
     }
     fn unlink(&self, name: &str) -> vfs::Result<()> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
@@ -383,7 +385,7 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
@@ -397,7 +399,7 @@ impl vfs::INode for INodeImpl {
         if !Arc::ptr_eq(&self.fs, &child.fs) {
             return Err(FsError::NotSameFs);
         }
-        if child.info()?.type_ == vfs::FileType::Dir {
+        if child.metadata()?.type_ == vfs::FileType::Dir {
             return Err(FsError::IsDir);
         }
         let entry = DiskEntry {
@@ -411,7 +413,7 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn rename(&self, old_name: &str, new_name: &str) -> vfs::Result<()> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
@@ -441,7 +443,7 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
@@ -459,10 +461,10 @@ impl vfs::INode for INodeImpl {
         if !Arc::ptr_eq(&self.fs, &dest.fs) {
             return Err(FsError::NotSameFs);
         }
-        if dest.info()?.type_ != vfs::FileType::Dir {
+        if dest.metadata()?.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
-        if dest.info()?.nlinks <= 0 {
+        if dest.metadata()?.nlinks <= 0 {
             return Err(FsError::DirRemoved)
         }
 
@@ -483,7 +485,7 @@ impl vfs::INode for INodeImpl {
 
         self.remove_dirent_page(entry_id)?;
 
-        if inode.info()?.type_ == vfs::FileType::Dir {
+        if inode.metadata()?.type_ == vfs::FileType::Dir {
             self.nlinks_dec();
             dest.nlinks_inc();
         }
@@ -491,7 +493,7 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn find(&self, name: &str) -> vfs::Result<Arc<vfs::INode>> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
             return Err(FsError::NotDir)
         }
@@ -716,11 +718,18 @@ impl vfs::FileSystem for SimpleFileSystem {
         self.get_inode(BLKN_ROOT)
     }
 
-    fn info(&self) -> &'static vfs::FsInfo {
-        static INFO: vfs::FsInfo = vfs::FsInfo {
-            max_file_size: MAX_FILE_SIZE,
-        };
-        &INFO
+    fn info(&self) -> vfs::FsInfo {
+        let sb = self.super_block.read();
+        vfs::FsInfo {
+            bsize: BLKSIZE,
+            frsize: BLKSIZE,
+            blocks: sb.blocks as usize,
+            bfree: sb.unused_blocks as usize,
+            bavail: sb.unused_blocks as usize,
+            files: sb.blocks as usize,           // inaccurate
+            ffree: sb.unused_blocks as usize,    // inaccurate
+            namemax: MAX_FNAME_LEN,
+        }
     }
 }
 

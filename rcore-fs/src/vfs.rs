@@ -6,7 +6,7 @@ use core::result;
 pub trait INode: Any + Sync + Send {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
-    fn info(&self) -> Result<FileInfo>;
+    fn metadata(&self) -> Result<Metadata>;
     fn sync(&self) -> Result<()>;
     fn resize(&self, len: usize) -> Result<()>;
     fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>;
@@ -33,7 +33,7 @@ impl INode {
         self.as_any_ref().downcast_ref::<T>()
     }
     pub fn list(&self) -> Result<Vec<String>> {
-        let info = self.info()?;
+        let info = self.metadata()?;
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
@@ -42,13 +42,13 @@ impl INode {
         }).collect()
     }
     pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
-        if self.info()?.type_ != FileType::Dir {
+        if self.metadata()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
         let mut result = self.find(".")?;
         let mut rest_path = path;
         while rest_path != "" {
-            if result.info()?.type_!= FileType::Dir {
+            if result.metadata()?.type_!= FileType::Dir {
                 return Err(FsError::NotDir);
             }
             let name;
@@ -71,8 +71,13 @@ impl INode {
     }
 }
 
+/// Metadata of INode
+///
+/// Ref: [http://pubs.opengroup.org/onlinepubs/009604499/basedefs/sys/stat.h.html]
 #[derive(Debug, Eq, PartialEq)]
-pub struct FileInfo {
+pub struct Metadata {
+    /// Device ID
+    pub dev: usize,
     /// Inode number
     pub inode: usize,
     /// Size in bytes
@@ -80,6 +85,9 @@ pub struct FileInfo {
     /// SFS Note: for normal file size is the actuate file size
     /// for directory this is count of dirent.
     pub size: usize,
+    /// A file system-specific preferred I/O block size for this object.
+    /// In some file system types, this may vary from file to file.
+    pub blk_size: usize,
     /// Size in blocks
     pub blocks: usize,
     /// Time of last access
@@ -97,9 +105,9 @@ pub struct FileInfo {
     /// SFS Note: different from linux, "." and ".." count in nlinks
     /// this is same as original ucore.
     pub nlinks: usize,
-    /// User id
+    /// User ID
     pub uid: usize,
-    /// Group id
+    /// Group ID
     pub gid: usize,
 }
 
@@ -116,11 +124,31 @@ pub enum FileType {
     SymLink,
     CharDevice,
     BlockDevice,
+    NamedPipe,
+    Socket,
 }
 
+/// Metadata of FileSystem
+///
+/// Ref: [http://pubs.opengroup.org/onlinepubs/9699919799/]
 #[derive(Debug)]
 pub struct FsInfo {
-    pub max_file_size: usize,
+    /// File system block size
+    pub bsize: usize,
+    /// Fundamental file system block size
+    pub frsize: usize,
+    /// Total number of blocks on file system in units of `frsize`
+    pub blocks: usize,
+    /// Total number of free blocks
+    pub bfree: usize,
+    /// Number of free blocks available to non-privileged process
+    pub bavail: usize,
+    /// Total number of file serial numbers
+    pub files: usize,
+    /// Total number of free file serial numbers
+    pub ffree: usize,
+    /// Maximum filename length
+    pub namemax: usize,
 }
 
 // Note: IOError/NoMemory always lead to a panic since it's hard to recover from it.
@@ -148,5 +176,5 @@ pub type Result<T> = result::Result<T,FsError>;
 pub trait FileSystem: Sync {
     fn sync(&self) -> Result<()>;
     fn root_inode(&self) -> Arc<INode>;
-    fn info(&self) -> &'static FsInfo;
+    fn info(&self) -> FsInfo;
 }

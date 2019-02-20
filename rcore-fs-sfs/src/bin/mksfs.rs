@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use rcore_fs::vfs::*;
 use rcore_fs_sfs::SimpleFileSystem;
 
+const DEFAULT_MODE: u32 = 0o664;
+
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();
     let cmd = &args[1];
@@ -41,7 +43,7 @@ fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
         let name = name_.to_str().unwrap();
         let type_ = entry.file_type()?;
         if type_.is_file() {
-            let inode = inode.create(name, FileType::File).expect("Failed to create INode");
+            let inode = inode.create(name, FileType::File, DEFAULT_MODE).expect("Failed to create INode");
             let mut file = fs::File::open(entry.path())?;
             inode.resize(file.metadata().unwrap().len() as usize).expect("Failed to resize INode");
             let mut buf: [u8; 4096] = unsafe { uninitialized() };
@@ -53,7 +55,7 @@ fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
                 offset += len;
             }
         } else if type_.is_dir() {
-            let inode = inode.create(name, FileType::Dir).expect("Failed to create INode");
+            let inode = inode.create(name, FileType::Dir, DEFAULT_MODE).expect("Failed to create INode");
             zip_dir(entry.path().as_path(), inode)?;
         }
     }
@@ -75,7 +77,7 @@ fn unzip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
         let inode = inode.lookup(name.as_str()).expect("Failed to lookup");
         let mut path = path.to_path_buf();
         path.push(name);
-        let info = inode.info().expect("Failed to get file info");
+        let info = inode.metadata().expect("Failed to get file info");
         match info.type_ {
             FileType::File => {
                 let mut file = fs::File::create(&path)?;
@@ -92,6 +94,7 @@ fn unzip_dir(path: &Path, inode: Arc<INode>) -> Result<()> {
                 fs::create_dir(&path)?;
                 unzip_dir(path.as_path(), inode)?;
             }
+            _ => panic!("unsupported file type"),
         }
     }
     Ok(())

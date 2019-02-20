@@ -38,7 +38,7 @@ fn create_file() -> Result<()> {
     let root = sfs.root_inode();
     let file1 = root.create("file1", FileType::File)?;
 
-    assert_eq!(file1.info()?, FileInfo {
+    assert_eq!(file1.info()?, Metadata {
         inode: 5,
         size: 0,
         type_: FileType::File,
