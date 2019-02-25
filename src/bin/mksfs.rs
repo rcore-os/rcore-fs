@@ -22,8 +22,9 @@ fn main() -> Result<()> {
 }
 
 fn zip(path: &Path, img_path: &Path) -> Result<()> {
+    const MAX_SPACE: usize = 0x1000 * 0x1000 * 8; // 128MB (4K bitmap)
     let img = fs::OpenOptions::new().read(true).write(true).create(true).open(img_path)?;
-    let sfs = SimpleFileSystem::create(Box::new(img), 0x1000000);
+    let sfs = SimpleFileSystem::create(Box::new(img), MAX_SPACE);
     let inode = sfs.root_inode();
     zip_dir(path, inode)?;
     sfs.sync().expect("Failed to sync");
