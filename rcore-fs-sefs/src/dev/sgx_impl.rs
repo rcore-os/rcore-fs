@@ -6,24 +6,25 @@ use std::path::{Path, PathBuf};
 use std::sgxfs::{OpenOptions, remove, SgxFile as File};
 use std::sync::SgxMutex as Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::untrusted::time::SystemTimeEx; // FIXME: use trusted ime
 
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::vfs::Timespec;
 
 use super::{DeviceError, DevResult};
 
-pub struct StdStorage {
+pub struct SgxStorage {
     path: PathBuf,
 }
 
-impl StdStorage {
+impl SgxStorage {
     pub fn new(path: impl AsRef<Path>) -> Self {
 //        assert!(path.as_ref().is_dir());
-        StdStorage { path: path.as_ref().to_path_buf() }
+        SgxStorage { path: path.as_ref().to_path_buf() }
     }
 }
 
-impl super::Storage for StdStorage {
+impl super::Storage for SgxStorage {
     fn open(&self, file_id: usize) -> DevResult<Box<super::File>> {
         let mut path = self.path.to_path_buf();
         path.push(format!("{}", file_id));
@@ -96,7 +97,7 @@ impl super::File for LockedFile {
 
 pub struct SgxTimeProvider;
 
-impl TimeProvider for StdTimeProvider {
+impl TimeProvider for SgxTimeProvider {
     fn current_time(&self) -> Timespec {
         let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         Timespec {
