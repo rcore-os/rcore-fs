@@ -1,6 +1,7 @@
 use alloc::{vec::Vec, string::String, sync::Arc};
 use core::any::Any;
 use core::result;
+use core::fmt;
 
 /// Abstract operations on a inode.
 pub trait INode: Any + Sync + Send {
@@ -170,7 +171,16 @@ pub enum FsError {
     DeviceError,
 }
 
-pub type Result<T> = result::Result<T,FsError>;
+impl fmt::Display for FsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[cfg(any(test, feature = "std"))]
+impl std::error::Error for FsError {}
+
+pub type Result<T> = result::Result<T, FsError>;
 
 /// Abstract filesystem
 pub trait FileSystem: Sync {
