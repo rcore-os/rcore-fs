@@ -59,21 +59,21 @@ impl File for SgxFile {
     fn write_at(&self, buf: &[u8], offset: usize) -> DevResult<usize> {
         match file_write_at(self.fd, offset, buf) {
             size if size > 0 => Ok(size as usize),
-            _ => panic!(),
+            e => panic!("write_at {}", e),
         }
     }
 
     fn set_len(&self, len: usize) -> DevResult<()> {
         match file_set_len(self.fd, len) {
             0 => Ok(()),
-            _ => panic!(),
+            e => panic!("set_len {}", e),
         }
     }
 
     fn flush(&self) -> DevResult<()> {
         match file_flush(self.fd) {
             0 => Ok(()),
-            _ => panic!(),
+            e => panic!("flush {}", e),
         }
     }
 }

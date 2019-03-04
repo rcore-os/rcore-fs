@@ -64,7 +64,10 @@ pub extern "C" fn ecall_set_sefs_dir(path: *const u8, len: usize) -> i32 {
 macro_rules! try_io {
     ($expr:expr) => (match $expr {
         Ok(val) => val,
-        Err(err) => return err.raw_os_error().unwrap(),
+        Err(err) => {
+            error!("{:?}", err);
+            return err.raw_os_error().unwrap();
+        }
     });
 }
 
@@ -140,9 +143,15 @@ pub extern "C" fn ecall_file_set_len(fd: usize, len: usize) -> i32 {
     debug!("set_len fd = {}, len = {}", fd, len);
     let current_len = try_io!(file.seek(SeekFrom::End(0))) as usize;
     if current_len < len {
-        let mut zeros = Vec::<u8>::new();
-        zeros.resize(len - current_len, 0);
-        try_io!(file.write(zeros.as_slice()));
+        static ZEROS: [u8; 0x1000] = [0; 0x1000];
+        let mut rest_len = len - current_len;
+        while rest_len != 0 {
+            let l = rest_len.min(0x1000);
+            try_io!(file.write(&ZEROS[..l]));
+            rest_len -= l;
+        }
+        // NOTE: Don't try to write a large slice at once.
+        //       It will cause Error 12: "Cannot allocate memory"
     }
     // TODO: how to shrink a file?
     0
