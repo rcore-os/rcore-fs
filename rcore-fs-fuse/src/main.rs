@@ -1,38 +1,104 @@
 use std::fs::OpenOptions;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use structopt::StructOpt;
 
+use rcore_fs::dev::std_impl::StdTimeProvider;
+use rcore_fs::vfs::FileSystem;
+use rcore_fs_fuse::fuse::VfsFuse;
+use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
 use rcore_fs_sefs as sefs;
 use rcore_fs_sfs as sfs;
-use rcore_fs_fuse::VfsFuse;
-use rcore_fs::dev::std_impl::StdTimeProvider;
 
 #[derive(Debug, StructOpt)]
 struct Opt {
+    /// Command
+    #[structopt(subcommand)]
+    cmd: Cmd,
+
     /// Image file
     #[structopt(parse(from_os_str))]
     image: PathBuf,
-    /// Mount point
+
+    /// Target directory
     #[structopt(parse(from_os_str))]
-    mount_point: PathBuf,
+    dir: PathBuf,
+
+    /// File system: [sfs | sefs]
+    #[structopt(short = "f", long = "fs", default_value = "sfs")]
+    fs: String,
+}
+
+#[derive(Debug, StructOpt)]
+enum Cmd {
+    /// Create a new <image> for <dir>
+    #[structopt(name = "zip")]
+    Zip,
+
+    /// Unzip data from given <image> to <dir>
+    #[structopt(name = "unzip")]
+    Unzip,
+
+    /// Mount <image> to <dir>
+    #[structopt(name = "mount")]
+    Mount,
 }
 
 fn main() {
     env_logger::init().unwrap();
     let opt = Opt::from_args();
-//    let img = OpenOptions::new().read(true).write(true).open(&opt.image)
-//        .expect("failed to open image");
-    let sfs = if opt.image.is_dir() {
-        let img = sefs::dev::StdStorage::new(&opt.image);
-        sefs::SEFS::open(Box::new(img), &StdTimeProvider)
-            .expect("failed to open sefs")
-    } else {
-        std::fs::create_dir_all(&opt.image).unwrap();
-        let img = sefs::dev::StdStorage::new(&opt.image);
-        sefs::SEFS::create(Box::new(img), &StdTimeProvider)
-            .expect("failed to create sefs")
+
+    // open or create
+    let create = match opt.cmd {
+        Cmd::Mount => !opt.image.is_dir() && !opt.image.is_file(),
+        Cmd::Zip => true,
+        Cmd::Unzip => false,
     };
-    fuse::mount(VfsFuse::new(sfs), &opt.mount_point, &[])
-        .expect("failed to mount fs");
+
+    let fs: Arc<FileSystem> = match opt.fs.as_str() {
+        "sfs" => {
+            let file = OpenOptions::new().read(true).write(true).create(true)
+                .open(&opt.image)
+                .expect("failed to open image");
+            let device = Mutex::new(file);
+            const MAX_SPACE: usize = 0x1000 * 0x1000 * 8; // 128MB (4K bitmap)
+            match create {
+                true => sfs::SimpleFileSystem::create(Box::new(device), MAX_SPACE),
+                false => sfs::SimpleFileSystem::open(Box::new(device))
+                    .expect("failed to open sfs"),
+            }
+        }
+        "sefs" => {
+            std::fs::create_dir_all(&opt.image).unwrap();
+            let device = sefs::dev::StdStorage::new(&opt.image);
+            match create {
+                true => {
+                    sefs::SEFS::create(Box::new(device), &StdTimeProvider)
+                        .expect("failed to create sefs")
+                }
+                false => {
+                    sefs::SEFS::open(Box::new(device), &StdTimeProvider)
+                        .expect("failed to open sefs")
+                }
+            }
+        }
+        _ => panic!("unsupported file system"),
+    };
+    match opt.cmd {
+        Cmd::Mount => {
+            fuse::mount(VfsFuse::new(fs), &opt.dir, &[])
+                .expect("failed to mount fs");
+        }
+        Cmd::Zip => {
+            zip_dir(&opt.dir, fs.root_inode())
+                .expect("failed to zip fs");
+        }
+        Cmd::Unzip => {
+            std::fs::create_dir(&opt.dir)
+                .expect("failed to create dir");
+            unzip_dir(&opt.dir, fs.root_inode())
+                .expect("failed to unzip fs");
+        }
+    }
 }
