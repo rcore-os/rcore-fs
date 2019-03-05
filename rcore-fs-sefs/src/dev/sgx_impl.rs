@@ -28,14 +28,18 @@ impl super::Storage for SgxStorage {
     fn open(&self, file_id: usize) -> DevResult<Box<super::File>> {
         let mut path = self.path.to_path_buf();
         path.push(format!("{}", file_id));
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
+        // TODO: key
+        let key = [0u8; 16];
+        let file = OpenOptions::new().read(true).update(true).open_ex(path, &key)?;
         Ok(Box::new(LockedFile(Mutex::new(file))))
     }
 
     fn create(&self, file_id: usize) -> DevResult<Box<super::File>> {
         let mut path = self.path.to_path_buf();
         path.push(format!("{}", file_id));
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
+        // TODO: key
+        let key = [0u8; 16];
+        let file = OpenOptions::new().write(true).update(true).open_ex(path, &key)?;
         Ok(Box::new(LockedFile(Mutex::new(file))))
     }
 
@@ -49,6 +53,7 @@ impl super::Storage for SgxStorage {
 
 impl From<std::io::Error> for DeviceError {
     fn from(e: std::io::Error) -> Self {
+        println!("{:?}", e);
         panic!("{:?}", e);
         DeviceError
     }
@@ -64,10 +69,7 @@ impl super::File for LockedFile {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> DevResult<usize> {
         let mut file = self.0.lock().unwrap();
         let offset = offset as u64;
-        let real_offset = file.seek(SeekFrom::Start(offset))?;
-        if real_offset != offset {
-            return Err(DeviceError);
-        }
+        file.seek(SeekFrom::Start(offset))?;
         let len = file.read(buf)?;
         Ok(len)
     }
@@ -75,10 +77,7 @@ impl super::File for LockedFile {
     fn write_at(&self, buf: &[u8], offset: usize) -> DevResult<usize> {
         let mut file = self.0.lock().unwrap();
         let offset = offset as u64;
-        let real_offset = file.seek(SeekFrom::Start(offset))?;
-        if real_offset != offset {
-            return Err(DeviceError);
-        }
+        file.seek(SeekFrom::Start(offset))?;
         let len = file.write(buf)?;
         Ok(len)
     }
