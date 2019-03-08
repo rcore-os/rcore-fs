@@ -1,7 +1,10 @@
+#![no_std]
 #![feature(alloc)]
 #![feature(const_str_len)]
 
 extern crate alloc;
+#[macro_use]
+extern crate log;
 
 use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
 use core::any::Any;
@@ -9,7 +12,6 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
-use log::*;
 use spin::RwLock;
 
 use rcore_fs::dev::Device;
@@ -269,8 +271,14 @@ impl vfs::INode for INodeImpl {
         self._read_at(offset, buf)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_!=FileType::File {
+        let DiskINode { type_, size, .. } = **self.disk_inode.read();
+        if type_ != FileType::File {
             return Err(FsError::NotFile);
+        }
+        // resize if not large enough
+        let end_offset = offset + buf.len();
+        if (size as usize) < end_offset {
+            self._resize(end_offset)?;
         }
         self._write_at(offset, buf)
     }

@@ -175,11 +175,6 @@ impl Filesystem for VfsFuse {
 
     fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], _flags: u32, reply: ReplyWrite) {
         let inode = try_vfs!(reply, self.get_inode(ino));
-        let info = try_vfs!(reply, inode.metadata());
-        let end = offset as usize + data.len();
-        if end > info.size {
-            try_vfs!(reply, inode.resize(end));
-        }
         let len = try_vfs!(reply, inode.write_at(offset as usize, data));
         reply.written(len as u32);
     }
