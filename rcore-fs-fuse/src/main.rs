@@ -64,8 +64,8 @@ fn main() {
             let device = Mutex::new(file);
             const MAX_SPACE: usize = 0x1000 * 0x1000 * 8; // 128MB (4K bitmap)
             match create {
-                true => sfs::SimpleFileSystem::create(Box::new(device), MAX_SPACE),
-                false => sfs::SimpleFileSystem::open(Box::new(device))
+                true => sfs::SimpleFileSystem::create(Arc::new(device), MAX_SPACE),
+                false => sfs::SimpleFileSystem::open(Arc::new(device))
                     .expect("failed to open sfs"),
             }
         }

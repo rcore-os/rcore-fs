@@ -216,7 +216,7 @@ impl INodeImpl {
     // Note: the _\w*_at method always return begin>size?0:begin<end?0:(min(size,end)-begin) when success
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
-        where F: FnMut(&Box<Device>, &BlockRange, usize) -> vfs::Result<()>
+        where F: FnMut(&Arc<Device>, &BlockRange, usize) -> vfs::Result<()>
     {
         let size = self._size();
         let iter = BlockIter {
@@ -553,14 +553,14 @@ pub struct SimpleFileSystem {
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
-    device: Box<Device>,
+    device: Arc<Device>,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SimpleFileSystem>,
 }
 
 impl SimpleFileSystem {
     /// Load SFS from device
-    pub fn open(device: Box<Device>) -> vfs::Result<Arc<Self>> {
+    pub fn open(device: Arc<Device>) -> vfs::Result<Arc<Self>> {
         let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER).unwrap();
         if !super_block.check() {
             return Err(FsError::WrongFs);
@@ -576,7 +576,7 @@ impl SimpleFileSystem {
         }.wrap())
     }
     /// Create a new SFS on blank disk
-    pub fn create(device: Box<Device>, space: usize) -> Arc<Self> {
+    pub fn create(device: Arc<Device>, space: usize) -> Arc<Self> {
         let blocks = (space / BLKSIZE).min(BLKBITS);
         assert!(blocks >= 16, "space too small");
 
