@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::error::Error;
 
-use rcore_fs::vfs::{INode, FileType, FsError};
+use rcore_fs::vfs::{INode, FileType};
 
 const DEFAULT_MODE: u32 = 0o664;
 const BUF_SIZE: usize = 0x1000;

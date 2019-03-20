@@ -144,14 +144,9 @@ impl Filesystem for VfsFuse {
     fn rename(&mut self, _req: &Request, parent: u64, name: &OsStr, newparent: u64, newname: &OsStr, reply: ReplyEmpty) {
         let name = name.to_str().unwrap();
         let newname = newname.to_str().unwrap();
-        if parent == newparent {
-            let parent = try_vfs!(reply, self.get_inode(parent));
-            try_vfs!(reply, parent.rename(name, newname));
-        } else {
-            let parent = try_vfs!(reply, self.get_inode(parent));
-            let newparent = try_vfs!(reply, self.get_inode(newparent));
-            try_vfs!(reply, parent.move_(name, newparent, newname));
-        }
+        let parent = try_vfs!(reply, self.get_inode(parent));
+        let newparent = try_vfs!(reply, self.get_inode(newparent));
+        try_vfs!(reply, parent.move_(name, newparent, newname));
         reply.ok();
     }
 
@@ -181,13 +176,17 @@ impl Filesystem for VfsFuse {
 
     fn flush(&mut self, _req: &Request, ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
         let inode = try_vfs!(reply, self.get_inode(ino));
-        try_vfs!(reply, inode.sync());
+        try_vfs!(reply, inode.sync_data());
         reply.ok();
     }
 
-    fn fsync(&mut self, _req: &Request, ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
+    fn fsync(&mut self, _req: &Request, ino: u64, _fh: u64, datasync: bool, reply: ReplyEmpty) {
         let inode = try_vfs!(reply, self.get_inode(ino));
-        try_vfs!(reply, inode.sync());
+        if datasync {
+            try_vfs!(reply, inode.sync_data());
+        } else {
+            try_vfs!(reply, inode.sync_all());
+        }
         reply.ok();
     }
 

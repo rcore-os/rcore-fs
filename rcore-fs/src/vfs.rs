@@ -8,14 +8,17 @@ pub trait INode: Any + Sync + Send {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
     fn metadata(&self) -> Result<Metadata>;
-    fn sync(&self) -> Result<()>;
+    /// Sync all data and metadata
+    fn sync_all(&self) -> Result<()>;
+    /// Sync data (not include metadata)
+    fn sync_data(&self) -> Result<()>;
     fn resize(&self, len: usize) -> Result<()>;
     fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>;
     fn unlink(&self, name: &str) -> Result<()>;
     /// user of the vfs api should call borrow_mut by itself
     fn link(&self, name: &str, other: &Arc<INode>) -> Result<()>;
-    fn rename(&self, old_name: &str, new_name: &str) -> Result<()>;
-    // when self==target use rename instead since it's not possible to have two mut_ref at the same time.
+    /// Move INode `self/old_name` to `target/new_name`.
+    /// If `target` equals `self`, do rename.
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> Result<()>;
     /// lookup with only one layer
     fn find(&self, name: &str) -> Result<Arc<INode>>;

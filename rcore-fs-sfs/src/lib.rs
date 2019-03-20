@@ -305,13 +305,16 @@ impl vfs::INode for INodeImpl {
             blk_size: BLKSIZE,
         })
     }
-    fn sync(&self) -> vfs::Result<()> {
+    fn sync_all(&self) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
         if disk_inode.dirty() {
             self.fs.device.write_block(self.id, 0, disk_inode.as_buf())?;
             disk_inode.sync();
         }
         Ok(())
+    }
+    fn sync_data(&self) -> vfs::Result<()> {
+        self.sync_all()
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
         if self.disk_inode.read().type_!=FileType::File {
@@ -419,82 +422,63 @@ impl vfs::INode for INodeImpl {
         child.nlinks_inc();
         Ok(())
     }
-    fn rename(&self, old_name: &str, new_name: &str) -> vfs::Result<()> {
-        let info = self.metadata()?;
-        if info.type_!=vfs::FileType::Dir {
-            return Err(FsError::NotDir)
-        }
-        if info.nlinks <= 0 {
-            return Err(FsError::DirRemoved)
-        }
-        if old_name == "." {
-            return Err(FsError::IsDir)
-        }
-        if old_name == ".." {
-            return Err(FsError::IsDir)
-        }
-
-        if !self.get_file_inode_id(new_name).is_none() {
-            return Err(FsError::EntryExist);
-        }
-
-        let (_, entry_id) = self.get_file_inode_and_entry_id(old_name).ok_or(FsError::EntryNotFound)?;
-
-        // in place modify name
-        let mut entry: DiskEntry = unsafe { uninitialized() };
-        let entry_pos = entry_id as usize * BLKSIZE;
-        self._read_at(entry_pos, entry.as_buf_mut()).unwrap();
-        entry.name = Str256::from(new_name);
-        self._write_at(entry_pos, entry.as_buf()).unwrap();
-
-        Ok(())
-    }
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_!=vfs::FileType::Dir {
-            return Err(FsError::NotDir)
+            return Err(FsError::NotDir);
         }
         if info.nlinks <= 0 {
-            return Err(FsError::DirRemoved)
+            return Err(FsError::DirRemoved);
         }
         if old_name == "." {
-            return Err(FsError::IsDir)
+            return Err(FsError::IsDir);
         }
         if old_name == ".." {
-            return Err(FsError::IsDir)
+            return Err(FsError::IsDir);
         }
 
         let dest = target.downcast_ref::<INodeImpl>().ok_or(FsError::NotSameFs)?;
+        let dest_info = dest.metadata()?;
         if !Arc::ptr_eq(&self.fs, &dest.fs) {
             return Err(FsError::NotSameFs);
         }
-        if dest.metadata()?.type_ != vfs::FileType::Dir {
-            return Err(FsError::NotDir)
+        if dest_info.type_ != vfs::FileType::Dir {
+            return Err(FsError::NotDir);
         }
-        if dest.metadata()?.nlinks <= 0 {
-            return Err(FsError::DirRemoved)
+        if dest_info.nlinks <= 0 {
+            return Err(FsError::DirRemoved);
         }
-
-        if !self.get_file_inode_id(new_name).is_none() {
+        if dest.get_file_inode_id(new_name).is_some() {
             return Err(FsError::EntryExist);
         }
 
-        let (inode_id, entry_id) = self.get_file_inode_and_entry_id(old_name).ok_or(FsError::EntryNotFound)?;
-        let inode = self.fs.get_inode(inode_id);
+        let (inode_id, entry_id) = self.get_file_inode_and_entry_id(old_name)
+            .ok_or(FsError::EntryNotFound)?;
+        if info.inode == dest_info.inode {
+            // rename: in place modify name
+            let mut entry: DiskEntry = unsafe { uninitialized() };
+            let entry_pos = entry_id as usize * BLKSIZE;
+            self._read_at(entry_pos, entry.as_buf_mut()).unwrap();
+            entry.name = Str256::from(new_name);
+            self._write_at(entry_pos, entry.as_buf()).unwrap();
+        } else {
+            // move
+            let inode = self.fs.get_inode(inode_id);
 
-        let entry = DiskEntry {
-            id: inode_id as u32,
-            name: Str256::from(new_name),
-        };
-        let old_size = dest._size();
-        dest._resize(old_size + BLKSIZE)?;
-        dest._write_at(old_size, entry.as_buf()).unwrap();
+            let entry = DiskEntry {
+                id: inode_id as u32,
+                name: Str256::from(new_name),
+            };
+            let old_size = dest._size();
+            dest._resize(old_size + BLKSIZE)?;
+            dest._write_at(old_size, entry.as_buf()).unwrap();
 
-        self.remove_dirent_page(entry_id)?;
+            self.remove_dirent_page(entry_id)?;
 
-        if inode.metadata()?.type_ == vfs::FileType::Dir {
-            self.nlinks_dec();
-            dest.nlinks_inc();
+            if inode.metadata()?.type_ == vfs::FileType::Dir {
+                self.nlinks_dec();
+                dest.nlinks_inc();
+            }
         }
 
         Ok(())
@@ -529,7 +513,7 @@ impl vfs::INode for INodeImpl {
 impl Drop for INodeImpl {
     /// Auto sync when drop
     fn drop(&mut self) {
-        self.sync().expect("Failed to sync when dropping the SimpleFileSystem Inode");
+        self.sync_all().expect("Failed to sync when dropping the SimpleFileSystem Inode");
         if self.disk_inode.read().nlinks <= 0 {
             self._resize(0).unwrap();
             self.disk_inode.write().sync();
@@ -608,7 +592,7 @@ impl SimpleFileSystem {
         root.init_dir_entry(BLKN_ROOT).unwrap();
         root.nlinks_inc();  //for .
         root.nlinks_inc();  //for ..(root's parent is itself)
-        root.sync().unwrap();
+        root.sync_all().unwrap();
 
         sfs
     }
@@ -715,7 +699,7 @@ impl vfs::FileSystem for SimpleFileSystem {
         self.flush_weak_inodes();
         for inode in self.inodes.read().values() {
             if let Some(inode) = inode.upgrade() {
-                inode.sync()?;
+                inode.sync_all()?;
             }
         }
         Ok(())
