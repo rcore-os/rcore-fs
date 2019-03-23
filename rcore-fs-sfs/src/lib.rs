@@ -6,7 +6,7 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
-use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, sync::{Arc, Weak}, vec::Vec};
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
@@ -199,7 +199,7 @@ impl INodeImpl {
         let disk_inode = self.disk_inode.read();
         match disk_inode.type_ {
             FileType::Dir => disk_inode.blocks as usize * BLKSIZE,
-            FileType::File | FileType::Link => disk_inode.size as usize,
+            FileType::File | FileType::SymLink => disk_inode.size as usize,
             _ => panic!("Unknown file type"),
         }
     }
@@ -209,7 +209,7 @@ impl INodeImpl {
         let mut disk_inode = self.disk_inode.write();
         disk_inode.size = match disk_inode.type_ {
             FileType::Dir => disk_inode.blocks as usize * DIRENT_SIZE,
-            FileType::File | FileType::Link => len,
+            FileType::File | FileType::SymLink => len,
             _ => panic!("Unknown file type"),
         } as u32
     }
@@ -265,14 +265,14 @@ impl INodeImpl {
 
 impl vfs::INode for INodeImpl {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_ != FileType::File && self.disk_inode.read().type_ != FileType::Link {
+        if self.disk_inode.read().type_ != FileType::File && self.disk_inode.read().type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         self._read_at(offset, buf)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
         let DiskINode { type_, size, .. } = **self.disk_inode.read();
-        if type_ != FileType::File && type_ != FileType::Link {
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         // resize if not large enough
@@ -289,7 +289,7 @@ impl vfs::INode for INodeImpl {
             dev: 0,
             inode: self.id,
             size: match disk_inode.type_ {
-                FileType::File | FileType::Link => disk_inode.size as usize,
+                FileType::File | FileType::SymLink => disk_inode.size as usize,
                 FileType::Dir => disk_inode.blocks as usize,
                 _ => panic!("Unknown file type"),
             },
@@ -317,7 +317,7 @@ impl vfs::INode for INodeImpl {
         self.sync_all()
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
-        if self.disk_inode.read().type_ != FileType::File && self.disk_inode.read().type_ != FileType::Link {
+        if self.disk_inode.read().type_ != FileType::File && self.disk_inode.read().type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         self._resize(len)
@@ -338,7 +338,8 @@ impl vfs::INode for INodeImpl {
 
         // Create new INode
         let inode = match type_ {
-            vfs::FileType::File | vfs::FileType::SymLink => self.fs.new_inode_file()?,
+            vfs::FileType::File => self.fs.new_inode_file()?,
+            vfs::FileType::SymLink => self.fs.new_inode_symlink()?,
             vfs::FileType::Dir => self.fs.new_inode_dir(self.id)?,
             _ => return Err(vfs::FsError::InvalidParam),
         };
@@ -664,6 +665,12 @@ impl SimpleFileSystem {
         let disk_inode = Dirty::new_dirty(DiskINode::new_file());
         Ok(self._new_inode(id, disk_inode))
     }
+    /// Create a new INode symlink
+    fn new_inode_symlink(&self) -> vfs::Result<Arc<INodeImpl>> {
+        let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
+        let disk_inode = Dirty::new_dirty(DiskINode::new_symlink());
+        Ok(self._new_inode(id, disk_inode))
+    }
     /// Create a new INode dir
     fn new_inode_dir(&self, parent: INodeId) -> vfs::Result<Arc<INodeImpl>> {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
@@ -761,7 +768,7 @@ impl From<FileType> for vfs::FileType {
     fn from(t: FileType) -> Self {
         match t {
             FileType::File => vfs::FileType::File,
-            FileType::Link => vfs::FileType::SymLink,
+            FileType::SymLink => vfs::FileType::SymLink,
             FileType::Dir => vfs::FileType::Dir,
             _ => panic!("unknown file type"),
         }

@@ -126,7 +126,7 @@ impl DiskINode {
     pub const fn new_symlink() -> Self {
         DiskINode {
             size: 0,
-            type_: FileType::File,
+            type_: FileType::SymLink,
             nlinks: 0,
             blocks: 0,
             direct: [0; NDIRECT],
@@ -210,7 +210,7 @@ pub enum FileType {
     Invalid = 0,
     File = 1,
     Dir = 2,
-    Link = 3,
+    SymLink = 3,
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
