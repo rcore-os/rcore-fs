@@ -28,14 +28,14 @@ trait DeviceExt: Device {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.read_at(id * BLKSIZE + offset, buf) {
             Some(len) if len == buf.len() => Ok(()),
-            _ => panic!(),
+            _ => panic!("cannot read block {} offset {} from device", id, offset),
         }
     }
     fn write_block(&self, id: BlockId, offset: usize, buf: &[u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.write_at(id * BLKSIZE + offset, buf) {
             Some(len) if len == buf.len() => Ok(()),
-            _ => panic!(),
+            _ => panic!("cannot write block {} offset {} to device", id, offset),
         }
     }
     /// Load struct `T` from given block in device
