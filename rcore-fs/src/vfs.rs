@@ -2,6 +2,7 @@ use alloc::{vec::Vec, string::String, sync::Arc};
 use core::any::Any;
 use core::result;
 use core::fmt;
+use core::str;
 
 /// Abstract operations on a inode.
 pub trait INode: Any + Sync + Send {
@@ -45,12 +46,19 @@ impl INode {
             self.get_entry(i)
         }).collect()
     }
+
+    /// Lookup path from current INode, and do not follow symlinks
     pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
+        self.lookup_follow(path, 0)
+    }
+
+    /// Lookup path from current INode, and follow symlinks at most `follow_times` times
+    pub fn lookup_follow(&self, path: &str, mut follow_times: usize) -> Result<Arc<INode>> {
         if self.metadata()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
         let mut result = self.find(".")?;
-        let mut rest_path = path;
+        let mut rest_path = String::from(path);
         while rest_path != "" {
             if result.metadata()?.type_!= FileType::Dir {
                 return Err(FsError::NotDir);
@@ -59,16 +67,38 @@ impl INode {
             match rest_path.find('/') {
                 None => {
                     name = rest_path;
-                    rest_path = ""
+                    rest_path = String::new();
                 }
                 Some(pos) => {
-                    name = &rest_path[0..pos];
-                    rest_path = &rest_path[pos + 1..]
+                    name = String::from(&rest_path[0..pos]);
+                    rest_path = String::from(&rest_path[pos + 1..]);
                 }
             };
-            match result.find(name) {
+            match result.find(&name) {
                 Err(error) => return Err(error),
-                Ok(inode) => result = inode,
+                Ok(inode) => {
+                    // Handle symlink
+                    if inode.metadata()?.type_ == FileType::SymLink && follow_times > 0 {
+                        follow_times -= 1;
+                        let mut content = [0u8; 256];
+                        let len = inode.read_at(0, &mut content)?;
+                        if let Ok(path) = str::from_utf8(&content[..len]) {
+                            if let Some('/') = path.chars().next() {
+                                // absolute link
+                                result = result.fs().root_inode();
+                                rest_path = String::from(&path[1..]);
+                            } else {
+                                // relative link
+                                // result remains unchanged
+                                rest_path = String::from(path);
+                            }
+                        } else {
+                            return Err(FsError::NotDir);
+                        }
+                    } else {
+                        result = inode
+                    }
+                },
             };
         }
         Ok(result)
