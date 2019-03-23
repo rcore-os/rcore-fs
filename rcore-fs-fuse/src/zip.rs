@@ -4,6 +4,7 @@ use std::mem::uninitialized;
 use std::path::Path;
 use std::sync::Arc;
 use std::error::Error;
+use std::os::unix::ffi::OsStrExt;
 
 use rcore_fs::vfs::{INode, FileType};
 
@@ -32,6 +33,12 @@ pub fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<(), Box<Error>> {
         } else if type_.is_dir() {
             let inode = inode.create(name, FileType::Dir, DEFAULT_MODE)?;
             zip_dir(entry.path().as_path(), inode)?;
+        } else if type_.is_symlink() {
+            let target = fs::read_link(entry.path())?;
+            let inode = inode.create(name, FileType::SymLink, DEFAULT_MODE)?;
+            let data = target.as_os_str().as_bytes();
+            inode.resize(data.len())?;
+            inode.write_at(0, data)?;
         }
     }
     Ok(())

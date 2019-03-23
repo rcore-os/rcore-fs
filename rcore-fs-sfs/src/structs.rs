@@ -123,6 +123,17 @@ impl DiskINode {
             db_indirect: 0,
         }
     }
+    pub const fn new_symlink() -> Self {
+        DiskINode {
+            size: 0,
+            type_: FileType::File,
+            nlinks: 0,
+            blocks: 0,
+            direct: [0; NDIRECT],
+            indirect: 0,
+            db_indirect: 0,
+        }
+    }
     pub const fn new_dir() -> Self {
         DiskINode {
             size: 0,
