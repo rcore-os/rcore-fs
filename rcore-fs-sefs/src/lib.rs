@@ -165,6 +165,13 @@ impl vfs::INode for INodeImpl {
             blk_size: 0x1000,
         })
     }
+
+    fn chmod(&self, mode: u16) -> vfs::Result<()> {
+        let mut disk_inode = self.disk_inode.write();
+        disk_inode.mode = mode;
+        Ok(())
+    }
+
     fn sync_all(&self) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
         if disk_inode.dirty() {

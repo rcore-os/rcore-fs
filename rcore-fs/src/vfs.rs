@@ -9,6 +9,7 @@ pub trait INode: Any + Sync + Send {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
     fn metadata(&self) -> Result<Metadata>;
+    fn chmod(&self, mode: u16) -> Result<()>;
     /// Sync all data and metadata
     fn sync_all(&self) -> Result<()>;
     /// Sync data (not include metadata)
