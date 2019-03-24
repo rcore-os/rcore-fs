@@ -308,7 +308,7 @@ impl vfs::INode for INodeImpl {
         })
     }
 
-    fn chmod(&self, mode: u16) -> vfs::Result<()> {
+    fn chmod(&self, _mode: u16) -> vfs::Result<()> {
         // No-op for sfs
         Ok(())
     }

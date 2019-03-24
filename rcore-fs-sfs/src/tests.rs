@@ -119,8 +119,56 @@ fn create_then_lookup() -> Result<()> {
         .expect("failed to create dir1");
     let file2 = dir1.create("file2", FileType::File, 0o777)
         .expect("failed to create /dir1/file2");
-    assert!(Arc::ptr_eq(&root.lookup("dir1/file2")?, &file2), "failed to find dir1/file1");
+    assert!(Arc::ptr_eq(&root.lookup("dir1/file2")?, &file2), "failed to find dir1/file2");
     assert!(Arc::ptr_eq(&dir1.lookup("..")?, &root), "failed to find .. from dir1");
+
+    assert!(Arc::ptr_eq(&dir1.lookup("../dir1/file2")?, &file2), "failed to find dir1/file2 by relative");
+    assert!(Arc::ptr_eq(&dir1.lookup("/dir1/file2")?, &file2), "failed to find dir1/file2 by absolute");
+    assert!(Arc::ptr_eq(&dir1.lookup("/dir1/../dir1/file2")?, &file2), "failed to find dir1/file2 by absolute");
+    assert!(Arc::ptr_eq(&dir1.lookup("../../..//dir1/../dir1/file2")?, &file2), "failed to find dir1/file2 by more than one ..");
+    assert!(Arc::ptr_eq(&dir1.lookup("..//dir1/file2")?, &file2), "failed to find dir1/file2 by weird relative");
+
+    sfs.sync()?;
+    Ok(())
+}
+
+#[test]
+fn test_symlinks() -> Result<()> {
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+
+    let file1 = root.create("file1", FileType::File, 0o777)
+        .expect("failed to create file1");
+    assert!(Arc::ptr_eq(&root.lookup("file1")?, &file1), "failed to find file1");
+
+    let link1 = root.create("link1", FileType::SymLink, 0o777)
+        .expect("failed to create link1");
+    let data = "file1".as_bytes();
+    link1.resize(data.len())?;
+    link1.write_at(0, data)?;
+
+    let link2 = root.create("link2", FileType::SymLink, 0o777)
+        .expect("failed to create link2");
+    let data = "link1".as_bytes();
+    link2.resize(data.len())?;
+    link2.write_at(0, data)?;
+
+    assert!(Arc::ptr_eq(&root.lookup("link1")?, &link1), "failed to find link1 by relative");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link1", 1)?, &file1), "failed to find file1 by link1");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link2", 0)?, &link2), "failed to find link2 by link2");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link2", 1)?, &link1), "failed to find link1 by link2");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link2", 2)?, &file1), "failed to find file1 by link2");
+
+    let link3 = root.create("link3", FileType::SymLink, 0o777)
+        .expect("failed to create link3");
+    let data = "/link2".as_bytes();
+    link3.resize(data.len())?;
+    link3.write_at(0, data)?;
+
+    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 0)?, &link3), "failed to find link3 by link3");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 1)?, &link2), "failed to find link2 by link3");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 2)?, &link1), "failed to find link1 by link3");
+    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 3)?, &file1), "failed to find file1 by link2");
 
     sfs.sync()?;
     Ok(())

@@ -58,11 +58,16 @@ impl INode {
         if self.metadata()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
+
         let mut result = self.find(".")?;
         let mut rest_path = String::from(path);
         while rest_path != "" {
-            if result.metadata()?.type_!= FileType::Dir {
+            if result.metadata()?.type_ != FileType::Dir {
                 return Err(FsError::NotDir);
+            }
+            // handle absolute path
+            if let Some('/') = rest_path.chars().next() {
+                return self.fs().root_inode().lookup_follow(&path[1..], follow_times);
             }
             let name;
             match rest_path.find('/') {
@@ -86,8 +91,7 @@ impl INode {
                         if let Ok(path) = str::from_utf8(&content[..len]) {
                             if let Some('/') = path.chars().next() {
                                 // absolute link
-                                result = result.fs().root_inode();
-                                rest_path = String::from(&path[1..]);
+                                return result.fs().root_inode().lookup_follow(&path[1..], follow_times);
                             } else {
                                 // relative link
                                 // result remains unchanged
