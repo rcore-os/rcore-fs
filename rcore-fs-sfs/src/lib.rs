@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![feature(alloc)]
 #![feature(const_str_len)]
 
@@ -22,6 +22,8 @@ use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
 use self::structs::*;
 
 mod structs;
+#[cfg(test)]
+mod tests;
 
 trait DeviceExt: Device {
     fn read_block(&self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {

@@ -9,5 +9,3 @@ pub mod util;
 pub mod vfs;
 pub mod dev;
 pub mod file;
-#[cfg(test)]
-mod tests;

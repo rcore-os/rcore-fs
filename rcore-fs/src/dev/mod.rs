@@ -99,7 +99,7 @@ mod test {
                 return false;
             }
             let begin = block_id << 2;
-            buf[..4].copy_from_slice(&mut self.lock()[begin..begin + 4]);
+            buf[..4].copy_from_slice(&mut self.lock().unwrap()[begin..begin + 4]);
             true
         }
         fn write_at(&self, block_id: usize, buf: &[u8]) -> bool {
@@ -107,7 +107,7 @@ mod test {
                 return false;
             }
             let begin = block_id << 2;
-            self.lock()[begin..begin + 4].copy_from_slice(&buf[..4]);
+            self.lock().unwrap()[begin..begin + 4].copy_from_slice(&buf[..4]);
             true
         }
     }
@@ -141,16 +141,16 @@ mod test {
         // all inside
         let ret = Device::write_at(&buf, 3, &res);
         assert_eq!(ret, Some(6));
-        assert_eq!(buf, [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(*buf.lock().unwrap(), [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0]);
 
         // partly inside
         let ret = Device::write_at(&buf, 11, &res);
         assert_eq!(ret, Some(5));
-        assert_eq!(buf, [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]);
+        assert_eq!(*buf.lock().unwrap(), [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]);
 
         // all outside
         let ret = Device::write_at(&buf, 16, &res);
         assert_eq!(ret, Some(0));
-        assert_eq!(buf, [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]);
+        assert_eq!(*buf.lock().unwrap(), [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]);
     }
 }
