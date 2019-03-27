@@ -28,6 +28,12 @@ impl VfsFuse {
             nsec: time.nsec,
         }
     }
+    fn trans_time_r(time: Timespec) -> vfs::Timespec {
+        vfs::Timespec {
+            sec: time.sec,
+            nsec: time.nsec,
+        }
+    }
     fn trans_attr(info: vfs::Metadata) -> FileAttr {
         FileAttr {
             ino: info.inode as u64,
@@ -40,8 +46,8 @@ impl VfsFuse {
             kind: Self::trans_type(info.type_),
             perm: info.mode,
             nlink: info.nlinks as u32,
-            uid: info.uid as u32,
-            gid: info.gid as u32,
+            uid: 501, // info.uid as u32,
+            gid: 20, // info.gid as u32,
             rdev: 0,
             flags: 0,
         }
@@ -59,20 +65,19 @@ impl VfsFuse {
     }
     fn trans_error(err: vfs::FsError) -> i32 {
         use libc::*;
-        use vfs::FsError::*;
         match err {
-            NotSupported => ENOSYS,
-            EntryNotFound => ENOENT,
-            EntryExist => EEXIST,
-            IsDir => EISDIR,
-            NotFile => EISDIR,
-            NotDir => ENOTDIR,
-            NotSameFs => EXDEV,
-            InvalidParam => EINVAL,
-            NoDeviceSpace => ENOSPC,
-            DirRemoved => ENOENT,
-            DirNotEmpty => ENOTEMPTY,
-            WrongFs => EINVAL,
+            vfs::FsError::NotSupported => ENOSYS,
+            vfs::FsError::EntryNotFound => ENOENT,
+            vfs::FsError::EntryExist => EEXIST,
+            vfs::FsError::IsDir => EISDIR,
+            vfs::FsError::NotFile => EISDIR,
+            vfs::FsError::NotDir => ENOTDIR,
+            vfs::FsError::NotSameFs => EXDEV,
+            vfs::FsError::InvalidParam => EINVAL,
+            vfs::FsError::NoDeviceSpace => ENOSPC,
+            vfs::FsError::DirRemoved => ENOENT,
+            vfs::FsError::DirNotEmpty => ENOTEMPTY,
+            vfs::FsError::WrongFs => EINVAL,
             _ => EINVAL,
         }
     }
@@ -118,6 +123,45 @@ impl Filesystem for VfsFuse {
         reply.attr(&TTL, &attr);
     }
 
+    fn setattr(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        _size: Option<u64>,
+        atime: Option<Timespec>,
+        mtime: Option<Timespec>,
+        _fh: Option<u64>,
+        _crtime: Option<Timespec>,
+        _chgtime: Option<Timespec>,
+        _bkuptime: Option<Timespec>,
+        _flags: Option<u32>,
+        reply: ReplyAttr,
+    ) {
+        let inode = try_vfs!(reply, self.get_inode(ino));
+        let mut info = try_vfs!(reply, inode.metadata());
+        if let Some(mode) = mode {
+            info.mode = mode as u16;
+        }
+        if let Some(uid) = uid {
+            info.uid = uid as usize;
+        }
+        if let Some(gid) = gid {
+            info.gid = gid as usize;
+        }
+        if let Some(atime) = atime {
+            info.atime = Self::trans_time_r(atime);
+        }
+        if let Some(mtime) = mtime {
+            info.mtime = Self::trans_time_r(mtime);
+        }
+        try_vfs!(reply, inode.set_metadata(&info));
+        let attr = Self::trans_attr(info);
+        reply.attr(&TTL, &attr);
+    }
+
     fn mknod(
         &mut self,
         _req: &Request,
@@ -141,6 +185,7 @@ impl Filesystem for VfsFuse {
         let inode = try_vfs!(reply, self.get_inode(parent));
         let target = try_vfs!(reply, inode.create(name, vfs::FileType::Dir, mode));
         let info = try_vfs!(reply, target.metadata());
+        self.inodes.insert(info.inode, target);
         let attr = Self::trans_attr(info);
         reply.entry(&TTL, &attr, 0);
     }

@@ -2,9 +2,6 @@
 #![feature(alloc)]
 
 extern crate alloc;
-#[cfg(feature = "sgx")]
-#[macro_use]
-extern crate sgx_tstd as std;
 
 use alloc::{
     boxed::Box,
@@ -191,13 +188,16 @@ impl vfs::INode for INodeImpl {
             blk_size: 0x1000,
         })
     }
-
-    fn chmod(&self, mode: u16) -> vfs::Result<()> {
+    fn set_metadata(&self, metadata: &vfs::Metadata) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
-        disk_inode.mode = mode;
+        disk_inode.mode = metadata.mode;
+        disk_inode.uid = metadata.uid as u16;
+        disk_inode.gid = metadata.gid as u8;
+        disk_inode.atime = metadata.atime.sec as u32;
+        disk_inode.mtime = metadata.mtime.sec as u32;
+        disk_inode.ctime = metadata.ctime.sec as u32;
         Ok(())
     }
-
     fn sync_all(&self) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
         if disk_inode.dirty() {
@@ -206,10 +206,12 @@ impl vfs::INode for INodeImpl {
                 .write_block(self.id, disk_inode.as_buf())?;
             disk_inode.sync();
         }
+        self.sync_data()?;
         Ok(())
     }
     fn sync_data(&self) -> vfs::Result<()> {
-        self.sync_all()
+        self.file.flush()?;
+        Ok(())
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
         if self.disk_inode.read().type_ != FileType::File {
