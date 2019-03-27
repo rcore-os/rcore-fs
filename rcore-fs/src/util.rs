@@ -39,9 +39,18 @@ impl Iterator for BlockIter {
         let block_size = 1usize << self.block_size_log2;
         let block = self.begin / block_size;
         let begin = self.begin % block_size;
-        let end = if block == self.end / block_size { self.end % block_size } else { block_size };
+        let end = if block == self.end / block_size {
+            self.end % block_size
+        } else {
+            block_size
+        };
         self.begin += end - begin;
-        Some(BlockRange { block, begin, end, block_size_log2 })
+        Some(BlockRange {
+            block,
+            begin,
+            end,
+            block_size_log2,
+        })
     }
 }
 
@@ -51,10 +60,38 @@ mod test {
 
     #[test]
     fn block_iter() {
-        let mut iter = BlockIter { begin: 0x123, end: 0x2018, block_size_log2: 12 };
-        assert_eq!(iter.next(), Some(BlockRange { block: 0, begin: 0x123, end: 0x1000, block_size_log2: 12 }));
-        assert_eq!(iter.next(), Some(BlockRange { block: 1, begin: 0, end: 0x1000, block_size_log2: 12 }));
-        assert_eq!(iter.next(), Some(BlockRange { block: 2, begin: 0, end: 0x18, block_size_log2: 12 }));
+        let mut iter = BlockIter {
+            begin: 0x123,
+            end: 0x2018,
+            block_size_log2: 12,
+        };
+        assert_eq!(
+            iter.next(),
+            Some(BlockRange {
+                block: 0,
+                begin: 0x123,
+                end: 0x1000,
+                block_size_log2: 12
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(BlockRange {
+                block: 1,
+                begin: 0,
+                end: 0x1000,
+                block_size_log2: 12
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(BlockRange {
+                block: 2,
+                begin: 0,
+                end: 0x18,
+                block_size_log2: 12
+            })
+        );
         assert_eq!(iter.next(), None);
     }
 }

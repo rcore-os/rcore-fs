@@ -3,7 +3,7 @@
 use std::boxed::Box;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sgxfs::{OpenOptions, remove, SgxFile as File};
+use std::sgxfs::{remove, OpenOptions, SgxFile as File};
 use std::sync::SgxMutex as Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::untrusted::time::SystemTimeEx; // FIXME: use trusted ime
@@ -11,7 +11,7 @@ use std::untrusted::time::SystemTimeEx; // FIXME: use trusted ime
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::vfs::Timespec;
 
-use super::{DeviceError, DevResult};
+use super::{DevResult, DeviceError};
 
 pub struct SgxStorage {
     path: PathBuf,
@@ -19,8 +19,10 @@ pub struct SgxStorage {
 
 impl SgxStorage {
     pub fn new(path: impl AsRef<Path>) -> Self {
-//        assert!(path.as_ref().is_dir());
-        SgxStorage { path: path.as_ref().to_path_buf() }
+        //        assert!(path.as_ref().is_dir());
+        SgxStorage {
+            path: path.as_ref().to_path_buf(),
+        }
     }
 }
 
@@ -30,7 +32,10 @@ impl super::Storage for SgxStorage {
         path.push(format!("{}", file_id));
         // TODO: key
         let key = [0u8; 16];
-        let file = OpenOptions::new().read(true).update(true).open_ex(path, &key)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .update(true)
+            .open_ex(path, &key)?;
         Ok(Box::new(LockedFile(Mutex::new(file))))
     }
 
@@ -39,7 +44,10 @@ impl super::Storage for SgxStorage {
         path.push(format!("{}", file_id));
         // TODO: key
         let key = [0u8; 16];
-        let file = OpenOptions::new().write(true).update(true).open_ex(path, &key)?;
+        let file = OpenOptions::new()
+            .write(true)
+            .update(true)
+            .open_ex(path, &key)?;
         Ok(Box::new(LockedFile(Mutex::new(file))))
     }
 

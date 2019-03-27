@@ -1,8 +1,8 @@
 # rcore-fs
 
-[![Build Status](https://travis-ci.org/wangrunji0408/rcore-fs.svg?branch=master)](https://travis-ci.org/wangrunji0408/rcore-fs)
+[![Build Status](https://travis-ci.org/rcore-os/rcore-fs.svg?branch=master)](https://travis-ci.org/rcore-os/rcore-fs)
 
-The file system module for [rCore OS](https://github.com/wangrunji0408/RustOS).
+The file system module for [rCore OS](https://github.com/rcore-os/rCore).
 
 ## Sub-projects
 

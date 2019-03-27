@@ -1,7 +1,7 @@
-use alloc::{vec::Vec, string::String, sync::Arc};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use core::any::Any;
-use core::result;
 use core::fmt;
+use core::result;
 use core::str;
 
 /// Abstract operations on a inode.
@@ -43,9 +43,7 @@ impl INode {
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
-        (0..info.size).map(|i| {
-            self.get_entry(i)
-        }).collect()
+        (0..info.size).map(|i| self.get_entry(i)).collect()
     }
 
     /// Lookup path from current INode, and do not follow symlinks
@@ -67,7 +65,10 @@ impl INode {
             }
             // handle absolute path
             if let Some('/') = rest_path.chars().next() {
-                return self.fs().root_inode().lookup_follow(&path[1..], follow_times);
+                return self
+                    .fs()
+                    .root_inode()
+                    .lookup_follow(&path[1..], follow_times);
             }
             let name;
             match rest_path.find('/') {
@@ -91,7 +92,10 @@ impl INode {
                         if let Ok(path) = str::from_utf8(&content[..len]) {
                             if let Some('/') = path.chars().next() {
                                 // absolute link
-                                return result.fs().root_inode().lookup_follow(&path[1..], follow_times);
+                                return result
+                                    .fs()
+                                    .root_inode()
+                                    .lookup_follow(&path[1..], follow_times);
                             } else {
                                 // relative link
                                 // result remains unchanged
@@ -103,7 +107,7 @@ impl INode {
                     } else {
                         result = inode
                     }
-                },
+                }
             };
         }
         Ok(result)
@@ -153,7 +157,7 @@ pub struct Metadata {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Timespec {
     pub sec: i64,
-    pub nsec: i32
+    pub nsec: i32,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -194,18 +198,18 @@ pub struct FsInfo {
 //       We also panic when we can not parse the fs on disk normally
 #[derive(Debug)]
 pub enum FsError {
-    NotSupported,//E_UNIMP, or E_INVAL
-    NotFile,//E_ISDIR
-    IsDir,//E_ISDIR, used only in link
-    NotDir,//E_NOTDIR
-    EntryNotFound,//E_NOENT
-    EntryExist,//E_EXIST
-    NotSameFs,//E_XDEV
-    InvalidParam,//E_INVAL
-    NoDeviceSpace,//E_NOSPC, but is defined and not used in the original ucore, which uses E_NO_MEM
-    DirRemoved,//E_NOENT, when the current dir was remove by a previous unlink
-    DirNotEmpty,//E_NOTEMPTY
-    WrongFs,//E_INVAL, when we find the content on disk is wrong when opening the device
+    NotSupported,  //E_UNIMP, or E_INVAL
+    NotFile,       //E_ISDIR
+    IsDir,         //E_ISDIR, used only in link
+    NotDir,        //E_NOTDIR
+    EntryNotFound, //E_NOENT
+    EntryExist,    //E_EXIST
+    NotSameFs,     //E_XDEV
+    InvalidParam,  //E_INVAL
+    NoDeviceSpace, //E_NOSPC, but is defined and not used in the original ucore, which uses E_NO_MEM
+    DirRemoved,    //E_NOENT, when the current dir was remove by a previous unlink
+    DirNotEmpty,   //E_NOTEMPTY
+    WrongFs,       //E_INVAL, when we find the content on disk is wrong when opening the device
     DeviceError,
 }
 

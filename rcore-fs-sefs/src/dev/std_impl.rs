@@ -1,10 +1,10 @@
 #![cfg(any(test, feature = "std"))]
 
-use std::path::{Path, PathBuf};
-use std::fs::{File, OpenOptions, remove_file};
-use std::io::{Read, Write, Seek, SeekFrom};
+use super::{DevResult, DeviceError};
 use spin::Mutex;
-use super::{DeviceError, DevResult};
+use std::fs::{remove_file, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
 pub struct StdStorage {
     path: PathBuf,
@@ -13,7 +13,9 @@ pub struct StdStorage {
 impl StdStorage {
     pub fn new(path: impl AsRef<Path>) -> Self {
         assert!(path.as_ref().is_dir());
-        StdStorage { path: path.as_ref().to_path_buf() }
+        StdStorage {
+            path: path.as_ref().to_path_buf(),
+        }
     }
 }
 
@@ -28,7 +30,11 @@ impl super::Storage for StdStorage {
     fn create(&self, file_id: usize) -> DevResult<Box<super::File>> {
         let mut path = self.path.to_path_buf();
         path.push(format!("{}", file_id));
-        let file = OpenOptions::new().read(true).write(true).create(true).open(path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(path)?;
         Ok(Box::new(Mutex::new(file)))
     }
 

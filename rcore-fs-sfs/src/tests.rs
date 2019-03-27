@@ -1,27 +1,26 @@
 extern crate std;
 
+use crate::*;
+use rcore_fs::vfs::{FileSystem, FileType, Metadata, Result, Timespec};
 use std::fs::{self, OpenOptions};
+use std::mem::uninitialized;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::mem::uninitialized;
-use crate::*;
-use rcore_fs::vfs::{FileSystem, Result, FileType, Metadata, Timespec};
 
 fn _open_sample_file() -> Arc<SimpleFileSystem> {
     fs::copy("sfs.img", "test.img").expect("failed to open sfs.img");
     let file = OpenOptions::new()
-        .read(true).write(true).open("test.img")
+        .read(true)
+        .write(true)
+        .open("test.img")
         .expect("failed to open test.img");
-    SimpleFileSystem::open(Arc::new(Mutex::new(file)))
-        .expect("failed to open SFS")
+    SimpleFileSystem::open(Arc::new(Mutex::new(file))).expect("failed to open SFS")
 }
 
 fn _create_new_sfs() -> Arc<SimpleFileSystem> {
-    let file = tempfile::tempfile()
-        .expect("failed to create file");
+    let file = tempfile::tempfile().expect("failed to create file");
     SimpleFileSystem::create(Arc::new(Mutex::new(file)), 32 * 4096)
 }
-
 
 #[test]
 #[ignore]
@@ -41,21 +40,24 @@ fn create_file() -> Result<()> {
     let root = sfs.root_inode();
     let file1 = root.create("file1", FileType::File, 0o777)?;
 
-    assert_eq!(file1.metadata()?, Metadata {
-        inode: 5,
-        size: 0,
-        type_: FileType::File,
-        mode: 0o777,
-        blocks: 0,
-        atime: Timespec { sec: 0, nsec: 0 },
-        mtime: Timespec { sec: 0, nsec: 0 },
-        nlinks: 1,
-        uid: 0,
-        ctime: Timespec { sec: 0, nsec: 0 },
-        gid: 0,
-        blk_size: 4096,
-        dev: 0,
-    });
+    assert_eq!(
+        file1.metadata()?,
+        Metadata {
+            inode: 5,
+            size: 0,
+            type_: FileType::File,
+            mode: 0o777,
+            blocks: 0,
+            atime: Timespec { sec: 0, nsec: 0 },
+            mtime: Timespec { sec: 0, nsec: 0 },
+            nlinks: 1,
+            uid: 0,
+            ctime: Timespec { sec: 0, nsec: 0 },
+            gid: 0,
+            blk_size: 4096,
+            dev: 0,
+        }
+    );
 
     sfs.sync()?;
     Ok(())
@@ -75,7 +77,11 @@ fn resize() -> Result<()> {
     let mut data1: [u8; SIZE2] = unsafe { uninitialized() };
     let len = file1.read_at(0, data1.as_mut())?;
     assert_eq!(len, SIZE1, "wrong size returned by read_at()");
-    assert_eq!(&data1[..SIZE1], &[0u8; SIZE1][..], "expanded data should be 0");
+    assert_eq!(
+        &data1[..SIZE1],
+        &[0u8; SIZE1][..],
+        "expanded data should be 0"
+    );
 
     sfs.sync()?;
     Ok(())
@@ -83,23 +89,23 @@ fn resize() -> Result<()> {
 
 #[test]
 fn resize_on_dir_should_panic() -> Result<()> {
-   let sfs = _create_new_sfs();
-   let root = sfs.root_inode();
-   assert!(root.resize(4096).is_err());
-   sfs.sync()?;
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+    assert!(root.resize(4096).is_err());
+    sfs.sync()?;
 
-   Ok(())
+    Ok(())
 }
 
 #[test]
 fn resize_too_large_should_panic() -> Result<()> {
-   let sfs = _create_new_sfs();
-   let root = sfs.root_inode();
-   let file1 = root.create("file1", FileType::File, 0o777)?;
-   assert!(file1.resize(1 << 28).is_err());
-   sfs.sync()?;
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+    let file1 = root.create("file1", FileType::File, 0o777)?;
+    assert!(file1.resize(1 << 28).is_err());
+    sfs.sync()?;
 
-   Ok(())
+    Ok(())
 }
 
 #[test]
@@ -110,23 +116,50 @@ fn create_then_lookup() -> Result<()> {
     assert!(Arc::ptr_eq(&root.lookup(".")?, &root), "failed to find .");
     assert!(Arc::ptr_eq(&root.lookup("..")?, &root), "failed to find ..");
 
-    let file1 = root.create("file1", FileType::File, 0o777)
+    let file1 = root
+        .create("file1", FileType::File, 0o777)
         .expect("failed to create file1");
-    assert!(Arc::ptr_eq(&root.lookup("file1")?, &file1), "failed to find file1");
+    assert!(
+        Arc::ptr_eq(&root.lookup("file1")?, &file1),
+        "failed to find file1"
+    );
     assert!(root.lookup("file2").is_err(), "found non-existent file");
 
-    let dir1 = root.create("dir1", FileType::Dir, 0o777)
+    let dir1 = root
+        .create("dir1", FileType::Dir, 0o777)
         .expect("failed to create dir1");
-    let file2 = dir1.create("file2", FileType::File, 0o777)
+    let file2 = dir1
+        .create("file2", FileType::File, 0o777)
         .expect("failed to create /dir1/file2");
-    assert!(Arc::ptr_eq(&root.lookup("dir1/file2")?, &file2), "failed to find dir1/file2");
-    assert!(Arc::ptr_eq(&dir1.lookup("..")?, &root), "failed to find .. from dir1");
+    assert!(
+        Arc::ptr_eq(&root.lookup("dir1/file2")?, &file2),
+        "failed to find dir1/file2"
+    );
+    assert!(
+        Arc::ptr_eq(&dir1.lookup("..")?, &root),
+        "failed to find .. from dir1"
+    );
 
-    assert!(Arc::ptr_eq(&dir1.lookup("../dir1/file2")?, &file2), "failed to find dir1/file2 by relative");
-    assert!(Arc::ptr_eq(&dir1.lookup("/dir1/file2")?, &file2), "failed to find dir1/file2 by absolute");
-    assert!(Arc::ptr_eq(&dir1.lookup("/dir1/../dir1/file2")?, &file2), "failed to find dir1/file2 by absolute");
-    assert!(Arc::ptr_eq(&dir1.lookup("../../..//dir1/../dir1/file2")?, &file2), "failed to find dir1/file2 by more than one ..");
-    assert!(Arc::ptr_eq(&dir1.lookup("..//dir1/file2")?, &file2), "failed to find dir1/file2 by weird relative");
+    assert!(
+        Arc::ptr_eq(&dir1.lookup("../dir1/file2")?, &file2),
+        "failed to find dir1/file2 by relative"
+    );
+    assert!(
+        Arc::ptr_eq(&dir1.lookup("/dir1/file2")?, &file2),
+        "failed to find dir1/file2 by absolute"
+    );
+    assert!(
+        Arc::ptr_eq(&dir1.lookup("/dir1/../dir1/file2")?, &file2),
+        "failed to find dir1/file2 by absolute"
+    );
+    assert!(
+        Arc::ptr_eq(&dir1.lookup("../../..//dir1/../dir1/file2")?, &file2),
+        "failed to find dir1/file2 by more than one .."
+    );
+    assert!(
+        Arc::ptr_eq(&dir1.lookup("..//dir1/file2")?, &file2),
+        "failed to find dir1/file2 by weird relative"
+    );
 
     sfs.sync()?;
     Ok(())
@@ -137,38 +170,72 @@ fn test_symlinks() -> Result<()> {
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
 
-    let file1 = root.create("file1", FileType::File, 0o777)
+    let file1 = root
+        .create("file1", FileType::File, 0o777)
         .expect("failed to create file1");
-    assert!(Arc::ptr_eq(&root.lookup("file1")?, &file1), "failed to find file1");
+    assert!(
+        Arc::ptr_eq(&root.lookup("file1")?, &file1),
+        "failed to find file1"
+    );
 
-    let link1 = root.create("link1", FileType::SymLink, 0o777)
+    let link1 = root
+        .create("link1", FileType::SymLink, 0o777)
         .expect("failed to create link1");
     let data = "file1".as_bytes();
     link1.resize(data.len())?;
     link1.write_at(0, data)?;
 
-    let link2 = root.create("link2", FileType::SymLink, 0o777)
+    let link2 = root
+        .create("link2", FileType::SymLink, 0o777)
         .expect("failed to create link2");
     let data = "link1".as_bytes();
     link2.resize(data.len())?;
     link2.write_at(0, data)?;
 
-    assert!(Arc::ptr_eq(&root.lookup("link1")?, &link1), "failed to find link1 by relative");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link1", 1)?, &file1), "failed to find file1 by link1");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link2", 0)?, &link2), "failed to find link2 by link2");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link2", 1)?, &link1), "failed to find link1 by link2");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link2", 2)?, &file1), "failed to find file1 by link2");
+    assert!(
+        Arc::ptr_eq(&root.lookup("link1")?, &link1),
+        "failed to find link1 by relative"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link1", 1)?, &file1),
+        "failed to find file1 by link1"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link2", 0)?, &link2),
+        "failed to find link2 by link2"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link2", 1)?, &link1),
+        "failed to find link1 by link2"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link2", 2)?, &file1),
+        "failed to find file1 by link2"
+    );
 
-    let link3 = root.create("link3", FileType::SymLink, 0o777)
+    let link3 = root
+        .create("link3", FileType::SymLink, 0o777)
         .expect("failed to create link3");
     let data = "/link2".as_bytes();
     link3.resize(data.len())?;
     link3.write_at(0, data)?;
 
-    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 0)?, &link3), "failed to find link3 by link3");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 1)?, &link2), "failed to find link2 by link3");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 2)?, &link1), "failed to find link1 by link3");
-    assert!(Arc::ptr_eq(&root.lookup_follow("link3", 3)?, &file1), "failed to find file1 by link2");
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link3", 0)?, &link3),
+        "failed to find link3 by link3"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link3", 1)?, &link2),
+        "failed to find link2 by link3"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link3", 2)?, &link1),
+        "failed to find link1 by link3"
+    );
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link3", 3)?, &file1),
+        "failed to find file1 by link2"
+    );
 
     sfs.sync()?;
     Ok(())

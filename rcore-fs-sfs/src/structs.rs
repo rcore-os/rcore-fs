@@ -1,9 +1,9 @@
 //! On-disk structures in SFS
 
-use core::slice;
-use core::mem::{size_of_val, size_of};
-use core::fmt::{Debug, Formatter, Error};
 use alloc::str;
+use core::fmt::{Debug, Error, Formatter};
+use core::mem::{size_of, size_of_val};
+use core::slice;
 use static_assertions::const_assert;
 
 /// On-disk superblock

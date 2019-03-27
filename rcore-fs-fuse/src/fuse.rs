@@ -1,4 +1,7 @@
-use fuse::{FileAttr, Filesystem, FileType, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyWrite, ReplyStatfs, Request};
+use fuse::{
+    FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry,
+    ReplyStatfs, ReplyWrite, Request,
+};
 use rcore_fs::vfs;
 use std::collections::btree_map::BTreeMap;
 use std::ffi::OsStr;
@@ -6,7 +9,7 @@ use std::sync::Arc;
 //use log::*;
 use time::Timespec;
 
-const TTL: Timespec = Timespec { sec: 1, nsec: 0 };                     // 1 second
+const TTL: Timespec = Timespec { sec: 1, nsec: 0 }; // 1 second
 
 pub struct VfsFuse {
     fs: Arc<vfs::FileSystem>,
@@ -55,8 +58,8 @@ impl VfsFuse {
         }
     }
     fn trans_error(err: vfs::FsError) -> i32 {
-        use vfs::FsError::*;
         use libc::*;
+        use vfs::FsError::*;
         match err {
             NotSupported => ENOSYS,
             EntryNotFound => ENOENT,
@@ -74,19 +77,23 @@ impl VfsFuse {
         }
     }
     fn get_inode(&self, ino: u64) -> vfs::Result<&Arc<vfs::INode>> {
-        self.inodes.get(&(ino as usize)).ok_or(vfs::FsError::EntryNotFound)
+        self.inodes
+            .get(&(ino as usize))
+            .ok_or(vfs::FsError::EntryNotFound)
     }
 }
 
 /// Helper macro to reply error when VFS operation fails
 macro_rules! try_vfs {
-    ($reply:expr, $expr:expr) => (match $expr {
-        Ok(val) => val,
-        Err(err) => {
-            $reply.error(Self::trans_error(err));
-            return;
+    ($reply:expr, $expr:expr) => {
+        match $expr {
+            Ok(val) => val,
+            Err(err) => {
+                $reply.error(Self::trans_error(err));
+                return;
+            }
         }
-    });
+    };
 }
 
 impl Filesystem for VfsFuse {
@@ -111,7 +118,15 @@ impl Filesystem for VfsFuse {
         reply.attr(&TTL, &attr);
     }
 
-    fn mknod(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, _rdev: u32, reply: ReplyEntry) {
+    fn mknod(
+        &mut self,
+        _req: &Request,
+        parent: u64,
+        name: &OsStr,
+        mode: u32,
+        _rdev: u32,
+        reply: ReplyEntry,
+    ) {
         let name = name.to_str().unwrap();
         let inode = try_vfs!(reply, self.get_inode(parent));
         let target = try_vfs!(reply, inode.create(name, vfs::FileType::File, mode));
@@ -141,7 +156,15 @@ impl Filesystem for VfsFuse {
         self.unlink(req, parent, name, reply);
     }
 
-    fn rename(&mut self, _req: &Request, parent: u64, name: &OsStr, newparent: u64, newname: &OsStr, reply: ReplyEmpty) {
+    fn rename(
+        &mut self,
+        _req: &Request,
+        parent: u64,
+        name: &OsStr,
+        newparent: u64,
+        newname: &OsStr,
+        reply: ReplyEmpty,
+    ) {
         let name = name.to_str().unwrap();
         let newname = newname.to_str().unwrap();
         let parent = try_vfs!(reply, self.get_inode(parent));
@@ -150,7 +173,14 @@ impl Filesystem for VfsFuse {
         reply.ok();
     }
 
-    fn link(&mut self, _req: &Request, ino: u64, newparent: u64, newname: &OsStr, reply: ReplyEntry) {
+    fn link(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        newparent: u64,
+        newname: &OsStr,
+        reply: ReplyEntry,
+    ) {
         let newname = newname.to_str().unwrap();
         let inode = try_vfs!(reply, self.get_inode(ino));
         let newparent = try_vfs!(reply, self.get_inode(newparent));
@@ -160,7 +190,15 @@ impl Filesystem for VfsFuse {
         reply.entry(&TTL, &attr, 0);
     }
 
-    fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, size: u32, reply: ReplyData) {
+    fn read(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        size: u32,
+        reply: ReplyData,
+    ) {
         let inode = try_vfs!(reply, self.get_inode(ino));
         let mut data = Vec::<u8>::new();
         data.resize(size as usize, 0);
@@ -168,7 +206,16 @@ impl Filesystem for VfsFuse {
         reply.data(data.as_slice());
     }
 
-    fn write(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, data: &[u8], _flags: u32, reply: ReplyWrite) {
+    fn write(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        data: &[u8],
+        _flags: u32,
+        reply: ReplyWrite,
+    ) {
         let inode = try_vfs!(reply, self.get_inode(ino));
         let len = try_vfs!(reply, inode.write_at(offset as usize, data));
         reply.written(len as u32);
@@ -190,7 +237,14 @@ impl Filesystem for VfsFuse {
         reply.ok();
     }
 
-    fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, mut reply: ReplyDirectory) {
+    fn readdir(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        mut reply: ReplyDirectory,
+    ) {
         let inode = try_vfs!(reply, self.get_inode(ino));
         let info = try_vfs!(reply, inode.metadata());
         let count = info.size;
@@ -209,8 +263,15 @@ impl Filesystem for VfsFuse {
 
     fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
         let info = self.fs.info();
-        reply.statfs(info.blocks as u64, info.bfree as u64, info.bavail as u64,
-                     info.files as u64, info.ffree as u64, info.bsize as u32,
-                     info.namemax as u32, info.frsize as u32);
+        reply.statfs(
+            info.blocks as u64,
+            info.bfree as u64,
+            info.bavail as u64,
+            info.files as u64,
+            info.ffree as u64,
+            info.bsize as u32,
+            info.namemax as u32,
+            info.frsize as u32,
+        );
     }
 }

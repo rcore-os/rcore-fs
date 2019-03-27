@@ -1,5 +1,5 @@
-use crate::vfs::{INode, Result, Metadata};
-use alloc::{sync::Arc, string::String};
+use crate::vfs::{INode, Metadata, Result};
+use alloc::{string::String, sync::Arc};
 
 pub struct File {
     inode: Arc<INode>,
@@ -10,7 +10,12 @@ pub struct File {
 
 impl File {
     pub fn new(inode: Arc<INode>, readable: bool, writable: bool) -> Self {
-        File { inode, offset: 0, readable, writable }
+        File {
+            inode,
+            offset: 0,
+            readable,
+            writable,
+        }
     }
 
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {

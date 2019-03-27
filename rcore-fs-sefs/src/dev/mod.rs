@@ -5,8 +5,8 @@ use rcore_fs::vfs::FsError;
 #[cfg(any(test, feature = "std"))]
 pub use self::std_impl::*;
 
-pub mod std_impl;
 pub mod sgx_impl;
+pub mod std_impl;
 
 /// A file stores a normal file or directory.
 ///
@@ -19,11 +19,19 @@ pub trait File: Send + Sync {
 
     fn read_exact_at(&self, buf: &mut [u8], offset: usize) -> DevResult<()> {
         let len = self.read_at(buf, offset)?;
-        if len == buf.len() { Ok(()) } else { Err(DeviceError) }
+        if len == buf.len() {
+            Ok(())
+        } else {
+            Err(DeviceError)
+        }
     }
     fn write_all_at(&self, buf: &[u8], offset: usize) -> DevResult<()> {
         let len = self.write_at(buf, offset)?;
-        if len == buf.len() { Ok(()) } else { Err(DeviceError) }
+        if len == buf.len() {
+            Ok(())
+        } else {
+            Err(DeviceError)
+        }
     }
 }
 

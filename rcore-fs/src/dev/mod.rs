@@ -24,7 +24,9 @@ pub trait BlockDevice: Send + Sync {
 
 macro_rules! try0 {
     ($len:expr, $res:expr) => {
-        if !$res {return Some($len);}
+        if !$res {
+            return Some($len);
+        }
     };
 }
 
@@ -114,7 +116,8 @@ mod test {
 
     #[test]
     fn read() {
-        let buf: Mutex<[u8; 16]> = Mutex::new([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let buf: Mutex<[u8; 16]> =
+            Mutex::new([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let mut res: [u8; 6] = [0; 6];
 
         // all inside
@@ -141,16 +144,25 @@ mod test {
         // all inside
         let ret = Device::write_at(&buf, 3, &res);
         assert_eq!(ret, Some(6));
-        assert_eq!(*buf.lock().unwrap(), [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            *buf.lock().unwrap(),
+            [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0]
+        );
 
         // partly inside
         let ret = Device::write_at(&buf, 11, &res);
         assert_eq!(ret, Some(5));
-        assert_eq!(*buf.lock().unwrap(), [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]);
+        assert_eq!(
+            *buf.lock().unwrap(),
+            [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]
+        );
 
         // all outside
         let ret = Device::write_at(&buf, 16, &res);
         assert_eq!(ret, Some(0));
-        assert_eq!(*buf.lock().unwrap(), [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]);
+        assert_eq!(
+            *buf.lock().unwrap(),
+            [0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 3, 4, 5, 6, 7]
+        );
     }
 }

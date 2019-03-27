@@ -58,47 +58,41 @@ fn main() {
 
     let fs: Arc<FileSystem> = match opt.fs.as_str() {
         "sfs" => {
-            let file = OpenOptions::new().read(true).write(true).create(true)
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
                 .open(&opt.image)
                 .expect("failed to open image");
             let device = Mutex::new(file);
             const MAX_SPACE: usize = 0x1000 * 0x1000 * 8; // 128MB (4K bitmap)
             match create {
                 true => sfs::SimpleFileSystem::create(Arc::new(device), MAX_SPACE),
-                false => sfs::SimpleFileSystem::open(Arc::new(device))
-                    .expect("failed to open sfs"),
+                false => sfs::SimpleFileSystem::open(Arc::new(device)).expect("failed to open sfs"),
             }
         }
         "sefs" => {
             std::fs::create_dir_all(&opt.image).unwrap();
             let device = sefs::dev::StdStorage::new(&opt.image);
             match create {
-                true => {
-                    sefs::SEFS::create(Box::new(device), &StdTimeProvider)
-                        .expect("failed to create sefs")
-                }
-                false => {
-                    sefs::SEFS::open(Box::new(device), &StdTimeProvider)
-                        .expect("failed to open sefs")
-                }
+                true => sefs::SEFS::create(Box::new(device), &StdTimeProvider)
+                    .expect("failed to create sefs"),
+                false => sefs::SEFS::open(Box::new(device), &StdTimeProvider)
+                    .expect("failed to open sefs"),
             }
         }
         _ => panic!("unsupported file system"),
     };
     match opt.cmd {
         Cmd::Mount => {
-            fuse::mount(VfsFuse::new(fs), &opt.dir, &[])
-                .expect("failed to mount fs");
+            fuse::mount(VfsFuse::new(fs), &opt.dir, &[]).expect("failed to mount fs");
         }
         Cmd::Zip => {
-            zip_dir(&opt.dir, fs.root_inode())
-                .expect("failed to zip fs");
+            zip_dir(&opt.dir, fs.root_inode()).expect("failed to zip fs");
         }
         Cmd::Unzip => {
-            std::fs::create_dir(&opt.dir)
-                .expect("failed to create dir");
-            unzip_dir(&opt.dir, fs.root_inode())
-                .expect("failed to unzip fs");
+            std::fs::create_dir(&opt.dir).expect("failed to create dir");
+            unzip_dir(&opt.dir, fs.root_inode()).expect("failed to unzip fs");
         }
     }
 }

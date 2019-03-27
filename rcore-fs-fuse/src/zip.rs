@@ -1,12 +1,12 @@
+use std::error::Error;
 use std::fs;
 use std::io::{Read, Write};
 use std::mem::uninitialized;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::Arc;
-use std::error::Error;
-use std::os::unix::ffi::OsStrExt;
 
-use rcore_fs::vfs::{INode, FileType};
+use rcore_fs::vfs::{FileType, INode};
 
 const DEFAULT_MODE: u32 = 0o664;
 const BUF_SIZE: usize = 0x1000;
