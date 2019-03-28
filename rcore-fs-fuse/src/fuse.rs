@@ -130,7 +130,7 @@ impl Filesystem for VfsFuse {
         mode: Option<u32>,
         uid: Option<u32>,
         gid: Option<u32>,
-        _size: Option<u64>,
+        size: Option<u64>,
         atime: Option<Timespec>,
         mtime: Option<Timespec>,
         _fh: Option<u64>,
@@ -141,6 +141,9 @@ impl Filesystem for VfsFuse {
         reply: ReplyAttr,
     ) {
         let inode = try_vfs!(reply, self.get_inode(ino));
+        if let Some(size) = size {
+            try_vfs!(reply, inode.resize(size as usize));
+        }
         let mut info = try_vfs!(reply, inode.metadata());
         if let Some(mode) = mode {
             info.mode = mode as u16;

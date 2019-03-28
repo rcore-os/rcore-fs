@@ -425,7 +425,7 @@ impl Drop for INodeImpl {
     }
 }
 
-/// Simple Encrypt File System
+/// Simple Encrypted File System
 pub struct SEFS {
     /// on-disk superblock
     super_block: RwLock<Dirty<SuperBlock>>,
