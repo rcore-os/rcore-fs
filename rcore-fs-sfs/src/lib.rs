@@ -11,6 +11,7 @@ use alloc::{
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
+    vec,
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -683,11 +684,14 @@ impl SimpleFileSystem {
         if !super_block.check() {
             return Err(FsError::WrongFs);
         }
-        let free_map = device.load_struct::<[u8; BLKSIZE]>(BLKN_FREEMAP).unwrap();
+        let mut freemap_disk = vec![0u8; BLKSIZE * super_block.freemap_blocks as usize];
+        for i in 0..super_block.freemap_blocks as usize {
+            device.read_block(BLKN_FREEMAP + i, 0, &mut freemap_disk[i * BLKSIZE..(i+1) *BLKSIZE])?;
+        }
 
         Ok(SimpleFileSystem {
             super_block: RwLock::new(Dirty::new(super_block)),
-            free_map: RwLock::new(Dirty::new(BitVec::from(free_map.as_ref()))),
+            free_map: RwLock::new(Dirty::new(BitVec::from(freemap_disk.as_slice()))),
             inodes: RwLock::new(BTreeMap::new()),
             device,
             self_ptr: Weak::default(),
@@ -696,19 +700,21 @@ impl SimpleFileSystem {
     }
     /// Create a new SFS on blank disk
     pub fn create(device: Arc<Device>, space: usize) -> Arc<Self> {
-        let blocks = (space / BLKSIZE).min(BLKBITS);
+        let blocks = (space + BLKSIZE - 1) / BLKSIZE;
+        let freemap_blocks = (space + BLKBITS * BLKSIZE - 1) / BLKBITS / BLKSIZE;
         assert!(blocks >= 16, "space too small");
 
         let super_block = SuperBlock {
             magic: MAGIC,
             blocks: blocks as u32,
-            unused_blocks: blocks as u32 - 3,
+            unused_blocks: (blocks - BLKN_FREEMAP - freemap_blocks) as u32,
             info: Str32::from(DEFAULT_INFO),
+            freemap_blocks: freemap_blocks as u32,
         };
         let free_map = {
-            let mut bitset = BitVec::with_capacity(BLKBITS);
-            bitset.extend(core::iter::repeat(false).take(BLKBITS));
-            for i in 3..blocks {
+            let mut bitset = BitVec::with_capacity(freemap_blocks * BLKBITS);
+            bitset.extend(core::iter::repeat(false).take(freemap_blocks * BLKBITS));
+            for i in (BLKN_FREEMAP + freemap_blocks)..blocks {
                 bitset.set(i, true);
             }
             bitset
@@ -753,11 +759,16 @@ impl SimpleFileSystem {
         if let Some(block_id) = id {
             let mut super_block = self.super_block.write();
             if super_block.unused_blocks == 0 {
+                let super_block = self.super_block.read();
+                panic!("{:?}", super_block);
                 free_map.set(block_id, true);
                 return None;
             }
             super_block.unused_blocks -= 1; // will not underflow
             trace!("alloc block {:#x}", block_id);
+        } else {
+            let super_block = self.super_block.read();
+            panic!("{:?}", super_block)
         }
         id
     }
@@ -841,9 +852,12 @@ impl vfs::FileSystem for SimpleFileSystem {
         }
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
-            self.device
-                .write_at(BLKSIZE * BLKN_FREEMAP, free_map.as_buf())
-                .unwrap();
+            let data = free_map.as_buf();
+            for i in 0..super_block.freemap_blocks as usize {
+                self.device
+                    .write_at(BLKSIZE * (BLKN_FREEMAP + i), &data[i * BLKSIZE..(i+1) * BLKSIZE])
+                    .unwrap();
+            }
             free_map.sync();
         }
         self.flush_weak_inodes();

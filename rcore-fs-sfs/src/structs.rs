@@ -18,6 +18,8 @@ pub struct SuperBlock {
     pub unused_blocks: u32,
     /// information for sfs
     pub info: Str32,
+    /// number of freemap blocks
+    pub freemap_blocks: u32,
 }
 
 /// inode (on disk)
@@ -186,9 +188,8 @@ pub const DEFAULT_INFO: &str = "simple file system";
 pub const MAX_INFO_LEN: usize = 31;
 /// max length of filename
 pub const MAX_FNAME_LEN: usize = 255;
-/// max file size in theory (48KB + 4MB + 4GB), but freemap is not large enough
-/// max file size (128M), 128M = 8 * 4096 * 4096
-pub const MAX_FILE_SIZE: usize = 1024 * 1024 * 128;
+/// max file size in theory (48KB + 4MB + 4GB)
+pub const MAX_FILE_SIZE: usize = 48 * 1024 + 4 * 1024 * 1024 + 4 * 1024 * 1024 * 1024;
 /// block the superblock lives in
 pub const BLKN_SUPER: BlockId = 0;
 /// location of the root dir inode

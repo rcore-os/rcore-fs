@@ -65,7 +65,7 @@ fn main() {
                 .open(&opt.image)
                 .expect("failed to open image");
             let device = Mutex::new(file);
-            const MAX_SPACE: usize = 0x1000 * 0x1000 * 8; // 128MB (4K bitmap)
+            const MAX_SPACE: usize = 0x1000 * 0x1000 * 1024; // 1G
             match create {
                 true => sfs::SimpleFileSystem::create(Arc::new(device), MAX_SPACE),
                 false => sfs::SimpleFileSystem::open(Arc::new(device)).expect("failed to open sfs"),

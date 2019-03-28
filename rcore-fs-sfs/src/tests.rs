@@ -43,7 +43,7 @@ fn create_file() -> Result<()> {
     assert_eq!(
         file1.metadata()?,
         Metadata {
-            inode: 5,
+            inode: 8,
             size: 0,
             type_: FileType::File,
             mode: 0o777,
@@ -102,7 +102,7 @@ fn resize_too_large_should_panic() -> Result<()> {
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
     let file1 = root.create("file1", FileType::File, 0o777)?;
-    assert!(file1.resize(1 << 28).is_err());
+    assert!(file1.resize(1 << 40).is_err());
     sfs.sync()?;
 
     Ok(())
@@ -261,16 +261,18 @@ fn test_double_indirect_blocks() -> Result<()> {
     file1.resize(MAX_NBLOCK_INDIRECT * BLKSIZE).unwrap();
     // force usage of double indirect block
     file1.resize((MAX_NBLOCK_INDIRECT + 1) * BLKSIZE).unwrap();
-    file1.resize(MAX_FILE_SIZE / 8).unwrap();
+    file1.resize((MAX_NBLOCK_INDIRECT + 2) * BLKSIZE).unwrap();
 
     // resize up and down
     file1.resize(0).unwrap();
+    file1.resize((MAX_NBLOCK_INDIRECT + 2) * BLKSIZE).unwrap();
     file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
     file1.resize((MAX_NBLOCK_DIRECT + 1) * BLKSIZE).unwrap();
     file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
     file1.resize(0).unwrap();
     file1.resize((MAX_NBLOCK_INDIRECT + 1) * BLKSIZE).unwrap();
     file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
+    file1.resize((MAX_NBLOCK_INDIRECT + 2) * BLKSIZE).unwrap();
     file1.resize((MAX_NBLOCK_INDIRECT + 1) * BLKSIZE).unwrap();
     file1.resize(0).unwrap();
 
