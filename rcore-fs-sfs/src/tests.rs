@@ -19,7 +19,7 @@ fn _open_sample_file() -> Arc<SimpleFileSystem> {
 
 fn _create_new_sfs() -> Arc<SimpleFileSystem> {
     let file = tempfile::tempfile().expect("failed to create file");
-    SimpleFileSystem::create(Arc::new(Mutex::new(file)), 32 * 4096)
+    SimpleFileSystem::create(Arc::new(Mutex::new(file)), 32 * 4096 * 4096)
 }
 
 #[test]
@@ -236,6 +236,43 @@ fn test_symlinks() -> Result<()> {
         Arc::ptr_eq(&root.lookup_follow("link3", 3)?, &file1),
         "failed to find file1 by link2"
     );
+
+    sfs.sync()?;
+    Ok(())
+}
+
+#[test]
+fn test_double_indirect_blocks() -> Result<()> {
+    let sfs = _create_new_sfs();
+    let root = sfs.root_inode();
+
+    let file1 = root
+        .create("file1", FileType::File, 0o777)
+        .expect("failed to create file1");
+    assert!(
+        Arc::ptr_eq(&root.lookup("file1")?, &file1),
+        "failed to find file1"
+    );
+
+    // resize to direct maximum size
+    file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
+    // force usage of indirect block
+    file1.resize((MAX_NBLOCK_DIRECT + 1) * BLKSIZE).unwrap();
+    file1.resize(MAX_NBLOCK_INDIRECT * BLKSIZE).unwrap();
+    // force usage of double indirect block
+    file1.resize((MAX_NBLOCK_INDIRECT + 1) * BLKSIZE).unwrap();
+    file1.resize(MAX_FILE_SIZE / 8).unwrap();
+
+    // resize up and down
+    file1.resize(0).unwrap();
+    file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
+    file1.resize((MAX_NBLOCK_DIRECT + 1) * BLKSIZE).unwrap();
+    file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
+    file1.resize(0).unwrap();
+    file1.resize((MAX_NBLOCK_INDIRECT + 1) * BLKSIZE).unwrap();
+    file1.resize(MAX_NBLOCK_DIRECT * BLKSIZE).unwrap();
+    file1.resize((MAX_NBLOCK_INDIRECT + 1) * BLKSIZE).unwrap();
+    file1.resize(0).unwrap();
 
     sfs.sync()?;
     Ok(())

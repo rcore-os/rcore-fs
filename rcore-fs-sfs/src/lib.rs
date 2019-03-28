@@ -80,8 +80,8 @@ impl INodeImpl {
         let disk_inode = self.disk_inode.read();
         match file_block_id {
             id if id >= disk_inode.blocks as BlockId => Err(FsError::InvalidParam),
-            id if id < NDIRECT => Ok(disk_inode.direct[id] as BlockId),
-            id if id < NDIRECT + BLK_NENTRY => {
+            id if id < MAX_NBLOCK_DIRECT => Ok(disk_inode.direct[id] as BlockId),
+            id if id < MAX_NBLOCK_INDIRECT => {
                 let mut disk_block_id: u32 = 0;
                 self.fs.device.read_block(
                     disk_inode.indirect as usize,
@@ -90,17 +90,36 @@ impl INodeImpl {
                 )?;
                 Ok(disk_block_id as BlockId)
             }
-            _ => unimplemented!("double indirect blocks is not supported"),
+            id if id < MAX_NBLOCK_DOUBLE_INDIRECT => {
+                // double indirect
+                let indirect_id = id - MAX_NBLOCK_INDIRECT;
+                let mut indirect_block_id: u32 = 0;
+                self.fs.device.read_block(
+                    disk_inode.db_indirect as usize,
+                    ENTRY_SIZE * (indirect_id / BLK_NENTRY),
+                    indirect_block_id.as_buf_mut(),
+                )?;
+                assert!(indirect_block_id > 0);
+                let mut disk_block_id: u32 = 0;
+                self.fs.device.read_block(
+                    indirect_block_id as usize,
+                    ENTRY_SIZE * (indirect_id as usize % BLK_NENTRY),
+                    disk_block_id.as_buf_mut(),
+                )?;
+                assert!(disk_block_id > 0);
+                Ok(disk_block_id as BlockId)
+            }
+            _ => unimplemented!("triple indirect blocks is not supported"),
         }
     }
     fn set_disk_block_id(&self, file_block_id: BlockId, disk_block_id: BlockId) -> vfs::Result<()> {
         match file_block_id {
             id if id >= self.disk_inode.read().blocks as BlockId => Err(FsError::InvalidParam),
-            id if id < NDIRECT => {
+            id if id < MAX_NBLOCK_DIRECT => {
                 self.disk_inode.write().direct[id] = disk_block_id as u32;
                 Ok(())
             }
-            id if id < NDIRECT + BLK_NENTRY => {
+            id if id < MAX_NBLOCK_INDIRECT => {
                 let disk_block_id = disk_block_id as u32;
                 self.fs.device.write_block(
                     self.disk_inode.read().indirect as usize,
@@ -109,7 +128,25 @@ impl INodeImpl {
                 )?;
                 Ok(())
             }
-            _ => unimplemented!("double indirect blocks is not supported"),
+            id if id < MAX_NBLOCK_DOUBLE_INDIRECT => {
+                // double indirect
+                let indirect_id = id - MAX_NBLOCK_INDIRECT;
+                let mut indirect_block_id: u32 = 0;
+                self.fs.device.read_block(
+                    self.disk_inode.read().db_indirect as usize,
+                    ENTRY_SIZE * (indirect_id / BLK_NENTRY),
+                    indirect_block_id.as_buf_mut(),
+                )?;
+                assert!(indirect_block_id > 0);
+                let disk_block_id = disk_block_id as u32;
+                self.fs.device.write_block(
+                    indirect_block_id as usize,
+                    ENTRY_SIZE * (indirect_id as usize % BLK_NENTRY),
+                    disk_block_id.as_buf(),
+                )?;
+                Ok(())
+            }
+            _ => unimplemented!("triple indirect blocks is not supported"),
         }
     }
     /// Only for Dir
@@ -172,6 +209,9 @@ impl INodeImpl {
             return Err(FsError::InvalidParam);
         }
         let blocks = ((len + BLKSIZE - 1) / BLKSIZE) as u32;
+        if blocks > MAX_NBLOCK_DOUBLE_INDIRECT as u32 {
+            return Err(FsError::InvalidParam);
+        }
         use core::cmp::{Ord, Ordering};
         let old_blocks = self.disk_inode.read().blocks;
         match blocks.cmp(&old_blocks) {
@@ -180,9 +220,31 @@ impl INodeImpl {
                 {
                     let mut disk_inode = self.disk_inode.write();
                     disk_inode.blocks = blocks;
-                    // allocate indirect block if need
-                    if old_blocks < NDIRECT as u32 && blocks >= NDIRECT as u32 {
+                    // allocate indirect block if needed
+                    if old_blocks < MAX_NBLOCK_DIRECT as u32 && blocks >= MAX_NBLOCK_DIRECT as u32 {
                         disk_inode.indirect = self.fs.alloc_block().expect("no space") as u32;
+                    }
+                    // allocate double indirect block if needed
+                    if blocks >= MAX_NBLOCK_INDIRECT as u32 {
+                        if disk_inode.db_indirect == 0 {
+                            disk_inode.db_indirect = self.fs.alloc_block().expect("no space") as u32;
+                        }
+                        let indirect_begin = {
+                            if (old_blocks as usize) < MAX_NBLOCK_INDIRECT {
+                                0
+                            } else {
+                                (old_blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1
+                            }
+                        };
+                        let indirect_end = (blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1;
+                        for i in indirect_begin..indirect_end {
+                            let indirect = self.fs.alloc_block().expect("no space") as u32;
+                            self.fs.device.write_block(
+                                disk_inode.db_indirect as usize,
+                                ENTRY_SIZE * i,
+                                indirect.as_buf(),
+                            )?;
+                        }
                     }
                 }
                 // allocate extra blocks
@@ -202,10 +264,36 @@ impl INodeImpl {
                     self.fs.free_block(disk_block_id);
                 }
                 let mut disk_inode = self.disk_inode.write();
-                // free indirect block if need
-                if blocks < NDIRECT as u32 && disk_inode.blocks >= NDIRECT as u32 {
+                // free indirect block if needed
+                if blocks < MAX_NBLOCK_DIRECT as u32 && disk_inode.blocks >= MAX_NBLOCK_DIRECT as u32 {
                     self.fs.free_block(disk_inode.indirect as usize);
                     disk_inode.indirect = 0;
+                }
+                // free double indirect block if needed
+                if disk_inode.blocks >= MAX_NBLOCK_INDIRECT as u32 {
+                    let indirect_begin = {
+                        if (blocks as usize) < MAX_NBLOCK_INDIRECT {
+                            0
+                        } else {
+                            (blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1
+                        }
+                    };
+                    let indirect_end = (disk_inode.blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1;
+                    for i in indirect_begin..indirect_end {
+                        let mut indirect: u32 = 0;
+                        self.fs.device.read_block(
+                            disk_inode.db_indirect as usize,
+                            ENTRY_SIZE * i,
+                            indirect.as_buf_mut(),
+                        )?;
+                        assert!(indirect > 0);
+                        self.fs.free_block(indirect as usize);
+                    }
+                    if blocks < MAX_NBLOCK_INDIRECT as u32 {
+                        assert!(disk_inode.db_indirect > 0);
+                        self.fs.free_block(disk_inode.db_indirect as usize);
+                        disk_inode.db_indirect = 0;
+                    }
                 }
                 disk_inode.blocks = blocks;
             }

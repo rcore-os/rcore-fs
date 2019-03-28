@@ -186,7 +186,8 @@ pub const DEFAULT_INFO: &str = "simple file system";
 pub const MAX_INFO_LEN: usize = 31;
 /// max length of filename
 pub const MAX_FNAME_LEN: usize = 255;
-/// max file size (128M)
+/// max file size in theory (48KB + 4MB + 4GB), but freemap is not large enough
+/// max file size (128M), 128M = 8 * 4096 * 4096
 pub const MAX_FILE_SIZE: usize = 1024 * 1024 * 128;
 /// block the superblock lives in
 pub const BLKN_SUPER: BlockId = 0;
@@ -202,6 +203,12 @@ pub const ENTRY_SIZE: usize = 4;
 pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
 /// size of a dirent used in the size field
 pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1;
+/// max number of blocks with direct blocks
+pub const MAX_NBLOCK_DIRECT: usize = NDIRECT;
+/// max number of blocks with indirect blocks
+pub const MAX_NBLOCK_INDIRECT: usize = NDIRECT + BLK_NENTRY;
+/// max number of blocks with double indirect blocks
+pub const MAX_NBLOCK_DOUBLE_INDIRECT: usize = NDIRECT + BLK_NENTRY + BLK_NENTRY * BLK_NENTRY;
 
 /// file types
 #[repr(u16)]
