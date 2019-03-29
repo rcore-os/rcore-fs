@@ -189,7 +189,8 @@ pub const MAX_INFO_LEN: usize = 31;
 /// max length of filename
 pub const MAX_FNAME_LEN: usize = 255;
 /// max file size in theory (48KB + 4MB + 4GB)
-pub const MAX_FILE_SIZE: usize = 48 * 1024 + 4 * 1024 * 1024 + 4 * 1024 * 1024 * 1024;
+/// however, the file size is stored in u32
+pub const MAX_FILE_SIZE: usize = 0xffffffff;
 /// block the superblock lives in
 pub const BLKN_SUPER: BlockId = 0;
 /// location of the root dir inode
