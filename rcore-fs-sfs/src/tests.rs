@@ -136,6 +136,10 @@ fn create_then_lookup() -> Result<()> {
         "failed to find dir1/file2"
     );
     assert!(
+        Arc::ptr_eq(&root.lookup("/")?.lookup("dir1/file2")?, &file2),
+        "failed to find dir1/file2"
+    );
+    assert!(
         Arc::ptr_eq(&dir1.lookup("..")?, &root),
         "failed to find .. from dir1"
     );
@@ -160,6 +164,12 @@ fn create_then_lookup() -> Result<()> {
         Arc::ptr_eq(&dir1.lookup("..//dir1/file2")?, &file2),
         "failed to find dir1/file2 by weird relative"
     );
+
+    assert!(root.lookup("./dir1/../file2").is_err(), "found non-existent file");
+    assert!(root.lookup("./dir1/../file3").is_err(), "found non-existent file");
+    assert!(root.lookup("/dir1/../dir1/../file3").is_err(), "found non-existent file");
+    assert!(root.lookup("/dir1/../../../dir1/../file3").is_err(), "found non-existent file");
+    assert!(root.lookup("/").unwrap().lookup("dir1/../file2").is_err(), "found non-existent file");
 
     sfs.sync()?;
     Ok(())
@@ -235,6 +245,25 @@ fn test_symlinks() -> Result<()> {
     assert!(
         Arc::ptr_eq(&root.lookup_follow("link3", 3)?, &file1),
         "failed to find file1 by link2"
+    );
+
+    let dir1 = root
+        .create("dir1", FileType::Dir, 0o777)
+        .expect("failed to create dir1");
+    let file2 = dir1
+        .create("file2", FileType::File, 0o777)
+        .expect("failed to create /dir1/file2");
+
+    let link_dir = root
+        .create("link_dir", FileType::SymLink, 0o777)
+        .expect("failed to create link2");
+    let data = "dir1".as_bytes();
+    link_dir.resize(data.len())?;
+    link_dir.write_at(0, data)?;
+
+    assert!(
+        Arc::ptr_eq(&root.lookup_follow("link_dir/file2", 1)?, &file2),
+        "failed to find file2"
     );
 
     sfs.sync()?;

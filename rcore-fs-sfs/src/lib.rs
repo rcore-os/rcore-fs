@@ -759,8 +759,6 @@ impl SimpleFileSystem {
         if let Some(block_id) = id {
             let mut super_block = self.super_block.write();
             if super_block.unused_blocks == 0 {
-                let super_block = self.super_block.read();
-                panic!("{:?}", super_block);
                 free_map.set(block_id, true);
                 return None;
             }

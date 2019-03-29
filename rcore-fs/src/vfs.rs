@@ -65,10 +65,9 @@ impl INode {
             }
             // handle absolute path
             if let Some('/') = rest_path.chars().next() {
-                return self
-                    .fs()
-                    .root_inode()
-                    .lookup_follow(&path[1..], follow_times);
+                result = self.fs().root_inode();
+                rest_path = String::from(&rest_path[1..]);
+                continue;
             }
             let name;
             match rest_path.find('/') {
@@ -90,17 +89,17 @@ impl INode {
                         let mut content = [0u8; 256];
                         let len = inode.read_at(0, &mut content)?;
                         if let Ok(path) = str::from_utf8(&content[..len]) {
-                            if let Some('/') = path.chars().next() {
-                                // absolute link
-                                return result
-                                    .fs()
-                                    .root_inode()
-                                    .lookup_follow(&path[1..], follow_times);
-                            } else {
-                                // relative link
-                                // result remains unchanged
-                                rest_path = String::from(path);
-                            }
+                            // result remains unchanged
+                            rest_path = {
+                                let mut new_path = String::from(path);
+                                if let Some('/') = new_path.chars().last() {
+                                    new_path += &rest_path;
+                                } else {
+                                    new_path += "/";
+                                    new_path += &rest_path;
+                                }
+                                new_path
+                            };
                         } else {
                             return Err(FsError::NotDir);
                         }
