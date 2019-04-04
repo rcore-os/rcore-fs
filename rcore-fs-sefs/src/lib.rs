@@ -156,6 +156,13 @@ impl vfs::INode for INodeImpl {
         let len = self.file.write_at(buf, offset)?;
         Ok(len)
     }
+    fn poll(&self) -> vfs::Result<vfs::PollStatus> {
+        Ok(vfs::PollStatus {
+            read: true,
+            write: true,
+            error: false
+        })
+    }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
     fn metadata(&self) -> vfs::Result<vfs::Metadata> {
         let disk_inode = self.disk_inode.read();
@@ -403,6 +410,9 @@ impl vfs::INode for INodeImpl {
         };
         let entry = self.file.read_direntry(id)?;
         Ok(String::from(entry.name.as_ref()))
+    }
+    fn io_control(&self, _cmd: u32, _data: u32) -> vfs::Result<()> {
+        Err(FsError::NotSupported)
     }
     fn fs(&self) -> Arc<vfs::FileSystem> {
         self.fs.clone()

@@ -4,40 +4,69 @@ use core::fmt;
 use core::result;
 use core::str;
 
-/// Abstract operations on a inode.
+/// Abstract file system object such as file or directory.
 pub trait INode: Any + Sync + Send {
+    /// Read bytes at `offset` into `buf`, return the number of bytes read.
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize>;
+
+    /// Write bytes at `offset` from `buf`, return the number of bytes written.
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize>;
+
+    /// Poll the events, return a bitmap of events.
+    fn poll(&self) -> Result<PollStatus>;
+
+    /// Get metadata of the INode
     fn metadata(&self) -> Result<Metadata>;
+
+    /// Set metadata of the INode
     fn set_metadata(&self, metadata: &Metadata) -> Result<()>;
+
     /// Sync all data and metadata
     fn sync_all(&self) -> Result<()>;
+
     /// Sync data (not include metadata)
     fn sync_data(&self) -> Result<()>;
+
+    /// Resize the file
     fn resize(&self, len: usize) -> Result<()>;
+
+    /// Create a new INode in the directory
     fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>;
-    fn unlink(&self, name: &str) -> Result<()>;
-    /// user of the vfs api should call borrow_mut by itself
+
+    /// Create a hard link `name` to `other`
     fn link(&self, name: &str, other: &Arc<INode>) -> Result<()>;
+
+    /// Delete a hard link `name`
+    fn unlink(&self, name: &str) -> Result<()>;
+
     /// Move INode `self/old_name` to `target/new_name`.
     /// If `target` equals `self`, do rename.
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> Result<()>;
-    /// lookup with only one layer
+
+    /// Find the INode `name` in the directory
     fn find(&self, name: &str) -> Result<Arc<INode>>;
-    /// like list()[id]
-    /// only get one item in list, often faster than list
+
+    /// Get the name of directory entry
     fn get_entry(&self, id: usize) -> Result<String>;
-    //    fn io_ctrl(&mut self, op: u32, data: &[u8]) -> Result<()>;
+
+    /// Control device
+    fn io_control(&self, cmd: u32, data: u32) -> Result<()>;
+
+    /// Get the file system of the INode
     fn fs(&self) -> Arc<FileSystem>;
-    /// this is used to implement dynamics cast
-    /// simply return self in the implement of the function
+
+    /// This is used to implement dynamics cast.
+    /// Simply return self in the implement of the function.
     fn as_any_ref(&self) -> &Any;
 }
 
 impl INode {
+    /// Downcast the INode to specific struct
     pub fn downcast_ref<T: INode>(&self) -> Option<&T> {
         self.as_any_ref().downcast_ref::<T>()
     }
+
+    /// Get all directory entries as a Vec
     pub fn list(&self) -> Result<Vec<String>> {
         let info = self.metadata()?;
         if info.type_ != FileType::Dir {
@@ -80,37 +109,38 @@ impl INode {
                     rest_path = String::from(&rest_path[pos + 1..]);
                 }
             };
-            match result.find(&name) {
-                Err(error) => return Err(error),
-                Ok(inode) => {
-                    // Handle symlink
-                    if inode.metadata()?.type_ == FileType::SymLink && follow_times > 0 {
-                        follow_times -= 1;
-                        let mut content = [0u8; 256];
-                        let len = inode.read_at(0, &mut content)?;
-                        if let Ok(path) = str::from_utf8(&content[..len]) {
-                            // result remains unchanged
-                            rest_path = {
-                                let mut new_path = String::from(path);
-                                if let Some('/') = new_path.chars().last() {
-                                    new_path += &rest_path;
-                                } else {
-                                    new_path += "/";
-                                    new_path += &rest_path;
-                                }
-                                new_path
-                            };
-                        } else {
-                            return Err(FsError::NotDir);
-                        }
+            let inode = result.find(&name)?;
+            // Handle symlink
+            if inode.metadata()?.type_ == FileType::SymLink && follow_times > 0 {
+                follow_times -= 1;
+                let mut content = [0u8; 256];
+                let len = inode.read_at(0, &mut content)?;
+                let path = str::from_utf8(&content[..len])
+                    .map_err(|_| FsError::NotDir)?;
+                // result remains unchanged
+                rest_path = {
+                    let mut new_path = String::from(path);
+                    if let Some('/') = new_path.chars().last() {
+                        new_path += &rest_path;
                     } else {
-                        result = inode
+                        new_path += "/";
+                        new_path += &rest_path;
                     }
-                }
-            };
+                    new_path
+                };
+            } else {
+                result = inode
+            }
         }
         Ok(result)
     }
+}
+
+#[derive(Debug, Default)]
+pub struct PollStatus {
+    pub read: bool,
+    pub write: bool,
+    pub error: bool,
 }
 
 /// Metadata of INode
@@ -223,9 +253,14 @@ impl std::error::Error for FsError {}
 
 pub type Result<T> = result::Result<T, FsError>;
 
-/// Abstract filesystem
+/// Abstract file system
 pub trait FileSystem: Sync {
+    /// Sync all data to the storage
     fn sync(&self) -> Result<()>;
+
+    /// Get the root INode of the file system
     fn root_inode(&self) -> Arc<INode>;
+
+    /// Get the file system information
     fn info(&self) -> FsInfo;
 }

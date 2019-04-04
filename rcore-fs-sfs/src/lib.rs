@@ -398,6 +398,13 @@ impl vfs::INode for INodeImpl {
         }
         self._write_at(offset, buf)
     }
+    fn poll(&self) -> vfs::Result<vfs::PollStatus> {
+        Ok(vfs::PollStatus {
+            read: true,
+            write: true,
+            error: false
+        })
+    }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
     fn metadata(&self) -> vfs::Result<vfs::Metadata> {
         let disk_inode = self.disk_inode.read();
@@ -484,6 +491,36 @@ impl vfs::INode for INodeImpl {
 
         Ok(inode)
     }
+    fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
+        let info = self.metadata()?;
+        if info.type_ != vfs::FileType::Dir {
+            return Err(FsError::NotDir);
+        }
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved);
+        }
+        if !self.get_file_inode_id(name).is_none() {
+            return Err(FsError::EntryExist);
+        }
+        let child = other
+            .downcast_ref::<INodeImpl>()
+            .ok_or(FsError::NotSameFs)?;
+        if !Arc::ptr_eq(&self.fs, &child.fs) {
+            return Err(FsError::NotSameFs);
+        }
+        if child.metadata()?.type_ == vfs::FileType::Dir {
+            return Err(FsError::IsDir);
+        }
+        let entry = DiskEntry {
+            id: child.id as u32,
+            name: Str256::from(name),
+        };
+        let old_size = self._size();
+        self._resize(old_size + BLKSIZE)?;
+        self._write_at(old_size, entry.as_buf()).unwrap();
+        child.nlinks_inc();
+        Ok(())
+    }
     fn unlink(&self, name: &str) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
@@ -519,36 +556,6 @@ impl vfs::INode for INodeImpl {
         }
         self.remove_dirent_page(entry_id)?;
 
-        Ok(())
-    }
-    fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
-        let info = self.metadata()?;
-        if info.type_ != vfs::FileType::Dir {
-            return Err(FsError::NotDir);
-        }
-        if info.nlinks <= 0 {
-            return Err(FsError::DirRemoved);
-        }
-        if !self.get_file_inode_id(name).is_none() {
-            return Err(FsError::EntryExist);
-        }
-        let child = other
-            .downcast_ref::<INodeImpl>()
-            .ok_or(FsError::NotSameFs)?;
-        if !Arc::ptr_eq(&self.fs, &child.fs) {
-            return Err(FsError::NotSameFs);
-        }
-        if child.metadata()?.type_ == vfs::FileType::Dir {
-            return Err(FsError::IsDir);
-        }
-        let entry = DiskEntry {
-            id: child.id as u32,
-            name: Str256::from(name),
-        };
-        let old_size = self._size();
-        self._resize(old_size + BLKSIZE)?;
-        self._write_at(old_size, entry.as_buf()).unwrap();
-        child.nlinks_inc();
         Ok(())
     }
     fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
@@ -634,6 +641,9 @@ impl vfs::INode for INodeImpl {
         self._read_at(id as usize * BLKSIZE, entry.as_buf_mut())
             .unwrap();
         Ok(String::from(entry.name.as_ref()))
+    }
+    fn io_control(&self, _cmd: u32, _data: u32) -> vfs::Result<()> {
+        Err(FsError::NotSupported)
     }
     fn fs(&self) -> Arc<vfs::FileSystem> {
         self.fs.clone()
