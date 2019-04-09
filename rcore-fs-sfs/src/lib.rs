@@ -868,8 +868,9 @@ impl vfs::FileSystem for SimpleFileSystem {
     }
 
     fn root_inode(&self) -> Arc<vfs::INode> {
-        let root = self.get_inode(BLKN_ROOT);
-        root.create("dev", vfs::FileType::Dir, 0);
+        self.get_inode(BLKN_ROOT)
+        // let root = self.get_inode(BLKN_ROOT);
+        // root.create("dev", vfs::FileType::Dir, 0);
     }
 
     fn info(&self) -> vfs::FsInfo {
