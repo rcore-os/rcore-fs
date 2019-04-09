@@ -3,4 +3,4 @@
 Cargo.lock
 .idea
 /*.img
-*.iml
+*.swp
