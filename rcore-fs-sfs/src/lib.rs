@@ -868,10 +868,10 @@ impl vfs::FileSystem for SimpleFileSystem {
     }
 
     fn root_inode(&self) -> Arc<vfs::INode> {
-        // self.get_inode(BLKN_ROOT)
-        let root = self.get_inode(BLKN_ROOT);
-        root.create("dev", vfs::FileType::Dir, 0).expect("fail to create dev"); // what's mode?
-        return root;
+        self.get_inode(BLKN_ROOT)
+        // let root = self.get_inode(BLKN_ROOT);
+        // root.create("dev", vfs::FileType::Dir, 0).expect("fail to create dev"); // what's mode?
+        // return root;
     }
 
     fn info(&self) -> vfs::FsInfo {
