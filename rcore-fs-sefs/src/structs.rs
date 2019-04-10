@@ -139,7 +139,7 @@ pub enum FileType {
     Invalid = 0,
     File = 1,
     Dir = 2,
-    Link = 3,
+    SymLink = 3,
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);

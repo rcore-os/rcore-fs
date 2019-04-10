@@ -143,14 +143,16 @@ impl INodeImpl {
 
 impl vfs::INode for INodeImpl {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_ != FileType::File {
+        let type_ = self.disk_inode.read().type_;
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         let len = self.file.read_at(buf, offset)?;
         Ok(len)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_ != FileType::File {
+        let type_ = self.disk_inode.read().type_;
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         let len = self.file.write_at(buf, offset)?;
@@ -170,7 +172,7 @@ impl vfs::INode for INodeImpl {
             dev: 0,
             inode: self.id,
             size: match disk_inode.type_ {
-                FileType::File => disk_inode.size as usize,
+                FileType::File | FileType::SymLink => disk_inode.size as usize,
                 FileType::Dir => disk_inode.blocks as usize,
                 _ => panic!("Unknown file type"),
             },
@@ -221,7 +223,8 @@ impl vfs::INode for INodeImpl {
         Ok(())
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
-        if self.disk_inode.read().type_ != FileType::File {
+        let type_ = self.disk_inode.read().type_;
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         self.file.set_len(len)?;
@@ -232,6 +235,7 @@ impl vfs::INode for INodeImpl {
         let type_ = match type_ {
             vfs::FileType::File => FileType::File,
             vfs::FileType::Dir => FileType::Dir,
+            vfs::FileType::SymLink => FileType::SymLink,
             _ => return Err(vfs::FsError::InvalidParam),
         };
         let info = self.metadata()?;
@@ -722,6 +726,7 @@ impl From<FileType> for vfs::FileType {
         match t {
             FileType::File => vfs::FileType::File,
             FileType::Dir => vfs::FileType::Dir,
+            FileType::SymLink => vfs::FileType::SymLink,
             _ => panic!("unknown file type"),
         }
     }
