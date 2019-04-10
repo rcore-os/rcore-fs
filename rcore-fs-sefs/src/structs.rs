@@ -16,6 +16,8 @@ pub struct SuperBlock {
     pub blocks: u32,
     /// number of unused blocks in fs
     pub unused_blocks: u32,
+    /// number of block groups
+    pub groups: u32,
 }
 
 /// On-disk inode
@@ -115,8 +117,6 @@ pub const BLKSIZE_LOG2: u8 = 7;
 pub const MAX_INFO_LEN: usize = 31;
 /// max length of filename
 pub const MAX_FNAME_LEN: usize = 255;
-/// max file size (128M)
-pub const MAX_FILE_SIZE: usize = 1024 * 1024 * 128;
 /// block the superblock lives in
 pub const BLKN_SUPER: BlockId = 0;
 /// location of the root dir inode

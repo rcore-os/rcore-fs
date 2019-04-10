@@ -488,6 +488,7 @@ impl SEFS {
             magic: MAGIC,
             blocks: blocks as u32,
             unused_blocks: blocks as u32 - 2,
+            groups: 1,
         };
         let free_map = {
             let mut bitset = BitVec::with_capacity(BLKBITS);
@@ -538,15 +539,22 @@ impl SEFS {
     /// Allocate a block, return block id
     fn alloc_block(&self) -> Option<usize> {
         let mut free_map = self.free_map.write();
-        let id = free_map.alloc();
-        if let Some(block_id) = id {
-            let mut super_block = self.super_block.write();
-            if super_block.unused_blocks == 0 {
-                free_map.set(block_id, true);
-                return None;
-            }
-            super_block.unused_blocks -= 1; // will not underflow
-        }
+        let mut super_block = self.super_block.write();
+        let id = free_map.alloc().or_else(|| {
+            // allocate a new group
+            let new_group_id = super_block.groups as usize;
+            super_block.groups += 1;
+            super_block.blocks += BLKBITS as u32;
+            super_block.unused_blocks += BLKBITS as u32 - 1;
+            self.meta_file.set_len(super_block.groups as usize * BLKBITS * BLKSIZE)
+                .expect("failed to extend meta file");
+            free_map.extend(core::iter::repeat(true).take(BLKBITS));
+            free_map.set(Self::get_freemap_block_id_of_group(new_group_id), false);
+            // allocate block again
+            free_map.alloc()
+        });
+        assert!(id.is_some(), "allocate block should always success");
+        super_block.unused_blocks -= 1;
         id
     }
     /// Free a block
@@ -621,23 +629,32 @@ impl SEFS {
             inodes.remove(&id);
         }
     }
+    fn get_freemap_block_id_of_group(group_id: usize) -> usize {
+        BLKBITS * group_id + BLKN_FREEMAP
+    }
 }
 
 impl vfs::FileSystem for SEFS {
     /// Write back super block if dirty
     fn sync(&self) -> vfs::Result<()> {
+        // sync super_block
         let mut super_block = self.super_block.write();
         if super_block.dirty() {
             self.meta_file
                 .write_all_at(super_block.as_buf(), BLKSIZE * BLKN_SUPER)?;
             super_block.sync();
         }
+        // sync free_map
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
-            self.meta_file
-                .write_all_at(free_map.as_buf(), BLKSIZE * BLKN_FREEMAP)?;
+            for i in 0..super_block.groups as usize {
+                let slice = &free_map.as_ref()[BLKSIZE * i..BLKSIZE * (i+1)];
+                self.meta_file
+                    .write_all_at(slice, BLKSIZE * Self::get_freemap_block_id_of_group(i))?;
+            }
             free_map.sync();
         }
+        // sync all INodes
         self.flush_weak_inodes();
         for inode in self.inodes.read().values() {
             if let Some(inode) = inode.upgrade() {
@@ -670,7 +687,7 @@ impl Drop for SEFS {
     /// Auto sync when drop
     fn drop(&mut self) {
         self.sync()
-            .expect("Failed to sync when dropping the SimpleFileSystem");
+            .expect("Failed to sync when dropping the SEFS");
     }
 }
 
