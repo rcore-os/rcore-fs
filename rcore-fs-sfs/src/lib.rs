@@ -12,6 +12,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
     vec,
+    boxed::Box
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -63,6 +64,7 @@ pub struct INodeImpl {
     disk_inode: RwLock<Dirty<DiskINode>>,
     /// Weak reference to SFS, used by almost all operations
     fs: Arc<SimpleFileSystem>,
+    device_inode: Option<Arc<DeviceINode>>
 }
 
 impl Debug for INodeImpl {
@@ -379,24 +381,36 @@ impl INodeImpl {
 
 impl vfs::INode for INodeImpl {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_ != FileType::File
-            && self.disk_inode.read().type_ != FileType::SymLink
-        {
-            return Err(FsError::NotFile);
+        match self.disk_inode.read().type_ {
+            FileType::File => self._read_at(offset, buf),
+            FileType::SymLink => self._read_at(offset, buf),
+            FileType::CharDevice => {
+                match &self.device_inode {
+                    Some(x) => x.read_at(offset, buf),
+                    None => Err(FsError::NoDevice)
+                }
+            },
+            _ => Err(FsError::NotFile)
         }
-        self._read_at(offset, buf)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
         let DiskINode { type_, size, .. } = **self.disk_inode.read();
-        if type_ != FileType::File && type_ != FileType::SymLink {
-            return Err(FsError::NotFile);
+        match type_ {
+            FileType::File | FileType::SymLink => {
+                let end_offset = offset + buf.len();
+                if (size as usize) < end_offset {
+                    self._resize(end_offset)?;
+                }
+                self._write_at(offset, buf)
+            },
+            FileType::CharDevice => {
+                match &self.device_inode {
+                    Some(x) => x.write_at(offset, buf),
+                    None => Err(FsError::NoDevice)
+                }
+            },
+            _ => Err(FsError::NotFile)
         }
-        // resize if not large enough
-        let end_offset = offset + buf.len();
-        if (size as usize) < end_offset {
-            self._resize(end_offset)?;
-        }
-        self._write_at(offset, buf)
     }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
     fn metadata(&self) -> vfs::Result<vfs::Metadata> {
@@ -407,6 +421,8 @@ impl vfs::INode for INodeImpl {
             size: match disk_inode.type_ {
                 FileType::File | FileType::SymLink => disk_inode.size as usize,
                 FileType::Dir => disk_inode.blocks as usize,
+                FileType::CharDevice => 0,
+                FileType::BlockDevice => 0,
                 _ => panic!("Unknown file type"),
             },
             mode: 0o777,
@@ -786,6 +802,7 @@ impl SimpleFileSystem {
             id,
             disk_inode: RwLock::new(disk_inode),
             fs: self.self_ptr.upgrade().unwrap(),
+            device_inode: None
         });
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode
@@ -929,6 +946,8 @@ impl From<FileType> for vfs::FileType {
             FileType::File => vfs::FileType::File,
             FileType::SymLink => vfs::FileType::SymLink,
             FileType::Dir => vfs::FileType::Dir,
+            FileType::CharDevice => vfs::FileType::CharDevice,
+            FileType::BlockDevice => vfs::FileType::BlockDevice,
             _ => panic!("unknown file type"),
         }
     }

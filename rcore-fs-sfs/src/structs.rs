@@ -4,7 +4,9 @@ use alloc::str;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::{size_of, size_of_val};
 use core::slice;
+use core::any::Any;
 use static_assertions::const_assert;
+use crate::vfs;
 
 /// On-disk superblock
 #[repr(C)]
@@ -43,6 +45,15 @@ pub struct DiskINode {
     /// double indirect blocks
     pub db_indirect: u32,
 }
+
+/*
+pub trait DeviceINode : Any + Sync + Send{
+    fn read_at(&self, _offset: usize, buf: &mut [u8]) -> vfs::Result<usize>;
+    fn write_at(&self, _offset: usize, buf: &[u8]) -> vfs::Result<usize>;
+}
+*/
+
+pub type DeviceINode = vfs::INode;
 
 #[repr(C)]
 pub struct IndirectBlock {
@@ -220,6 +231,8 @@ pub enum FileType {
     File = 1,
     Dir = 2,
     SymLink = 3,
+    CharDevice = 4,
+    BlockDevice = 5,
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);

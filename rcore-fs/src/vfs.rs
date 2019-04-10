@@ -210,6 +210,7 @@ pub enum FsError {
     DirNotEmpty,   //E_NOTEMPTY
     WrongFs,       //E_INVAL, when we find the content on disk is wrong when opening the device
     DeviceError,
+    NoDevice
 }
 
 impl fmt::Display for FsError {
