@@ -45,7 +45,6 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sgxfs::{OpenOptions, SgxFile};
 use std::sync::{SgxMutex as Mutex, SgxRwLock as RwLock};
-use std::vec::Vec;
 use sgx_types::sgx_key_128bit_t;
 
 #[no_mangle]
@@ -147,7 +146,16 @@ pub extern "C" fn ecall_file_set_len(fd: usize, len: usize) -> i32 {
         let mut rest_len = len - current_len;
         while rest_len != 0 {
             let l = rest_len.min(0x1000);
-            try_io!(file.write(&ZEROS[..l]));
+            let ret = file.write(&ZEROS[..l]);
+            if let Err(e) = ret {
+                if e.raw_os_error().unwrap() == 12 {
+                    warn!("Error 12: \"Cannot allocate memory\". Clear cache and try again.");
+                    try_io!(file.clear_cache());
+                    try_io!(file.write(&ZEROS[..l]));
+                } else {
+                    try_io!(Err(e));
+                }
+            }
             rest_len -= l;
         }
         // NOTE: Don't try to write a large slice at once.
