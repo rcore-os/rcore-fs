@@ -19,7 +19,7 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
-use spin::RwLock;
+use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use rcore_fs::dev::Device;
 use rcore_fs::dirty::Dirty;
@@ -64,7 +64,7 @@ pub struct INodeImpl {
     disk_inode: RwLock<Dirty<DiskINode>>,
     /// Weak reference to SFS, used by almost all operations
     fs: Arc<SimpleFileSystem>,
-    device_inode: Option<Arc<DeviceINode>>
+    device_inode_id: usize
 }
 
 impl Debug for INodeImpl {
@@ -385,15 +385,17 @@ impl vfs::INode for INodeImpl {
             FileType::File => self._read_at(offset, buf),
             FileType::SymLink => self._read_at(offset, buf),
             FileType::CharDevice => {
-                match &self.device_inode {
-                    Some(x) => x.read_at(offset, buf),
-                    None => Err(FsError::NoDevice)
+                let device_inodes = self.fs.device_inodes.read();
+                let device_inode = device_inodes.get(&self.device_inode_id);
+                match device_inode {
+                    Some(device) => device.read().read_at(offset, buf),
+                    None => Err(FsError::DeviceError)
                 }
             },
             _ => Err(FsError::NotFile)
         }
     }
-    fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
+    fn write_at(&mut self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
         let DiskINode { type_, size, .. } = **self.disk_inode.read();
         match type_ {
             FileType::File | FileType::SymLink => {
@@ -404,9 +406,11 @@ impl vfs::INode for INodeImpl {
                 self._write_at(offset, buf)
             },
             FileType::CharDevice => {
-                match &self.device_inode {
-                    Some(x) => x.write_at(offset, buf),
-                    None => Err(FsError::NoDevice)
+                let device_inodes = self.fs.device_inodes.write();
+                let device_inode = device_inodes.get(&self.device_inode_id);
+                match device_inode {
+                    Some(device) => device.write().write_at(offset, buf),
+                    None => Err(FsError::DeviceError)
                 }
             },
             _ => Err(FsError::NotFile)
@@ -691,6 +695,8 @@ pub struct SimpleFileSystem {
     device: Arc<Device>,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SimpleFileSystem>,
+    /// device inode
+    device_inodes: RwLock<BTreeMap<usize, RwLock<Box<DeviceINode>>>>
 }
 
 impl SimpleFileSystem {
@@ -711,6 +717,7 @@ impl SimpleFileSystem {
             inodes: RwLock::new(BTreeMap::new()),
             device,
             self_ptr: Weak::default(),
+            device_inodes: RwLock::new(BTreeMap::new())
         }
         .wrap())
     }
@@ -742,6 +749,7 @@ impl SimpleFileSystem {
             inodes: RwLock::new(BTreeMap::new()),
             device,
             self_ptr: Weak::default(),
+            device_inodes: RwLock::new(BTreeMap::new())
         }
         .wrap();
 
@@ -802,7 +810,18 @@ impl SimpleFileSystem {
             id,
             disk_inode: RwLock::new(disk_inode),
             fs: self.self_ptr.upgrade().unwrap(),
-            device_inode: None
+            device_inode_id: NODEVICE
+        });
+        self.inodes.write().insert(id, Arc::downgrade(&inode));
+        inode
+    }
+
+    fn _new_inode_with_device(&self, id: INodeId, disk_inode: Dirty<DiskINode>, device_inode_id: usize) -> Arc<INodeImpl> {
+        let inode = Arc::new(INodeImpl {
+            id,
+            disk_inode: RwLock::new(disk_inode),
+            fs: self.self_ptr.upgrade().unwrap(),
+            device_inode_id: device_inode_id
         });
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode
@@ -841,6 +860,13 @@ impl SimpleFileSystem {
         let inode = self._new_inode(id, disk_inode);
         inode.init_dir_entry(parent)?;
         Ok(inode)
+    }
+    /// Create a new INode chardevice
+    pub fn new_inode_chardevice(&self, device_inode_id: usize) -> vfs::Result<Arc<INodeImpl>> {
+        let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
+        let disk_inode = Dirty::new_dirty(DiskINode::new_chardevice());
+        let new_inode = self._new_inode_with_device(id, disk_inode, device_inode_id);
+        Ok(new_inode)
     }
     fn flush_weak_inodes(&self) {
         let mut inodes = self.inodes.write();

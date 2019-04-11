@@ -158,6 +158,17 @@ impl DiskINode {
             db_indirect: 0,
         }
     }
+    pub const fn new_chardevice() -> Self {
+        DiskINode {
+            size: 0,
+            type_: FileType::CharDevice,
+            nlinks: 0,
+            blocks: 0,
+            direct: [0; NDIRECT],
+            indirect: 0,
+            db_indirect: 0,
+        }
+    }
 }
 
 /// Convert structs to [u8] slice
@@ -184,6 +195,8 @@ impl AsBuf for u32 {}
  */
 pub type BlockId = usize;
 pub type INodeId = BlockId;
+
+pub const NODEVICE: usize = 100;
 
 /// magic number for sfs
 pub const MAGIC: u32 = 0x2f8dbe2a;
