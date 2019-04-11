@@ -377,6 +377,35 @@ impl INodeImpl {
         assert!(disk_inode.nlinks > 0);
         disk_inode.nlinks -= 1;
     }
+
+    pub fn link_inodeimpl(&self, name: &str, other: &Arc<INodeImpl>) -> vfs::Result<()> {
+        let info = self.metadata()?;
+        if info.type_ != vfs::FileType::Dir {
+            return Err(FsError::NotDir);
+        }
+        if info.nlinks <= 0 {
+            return Err(FsError::DirRemoved);
+        }
+        if !self.get_file_inode_id(name).is_none() {
+            return Err(FsError::EntryExist);
+        }
+        let child = other;
+        if !Arc::ptr_eq(&self.fs, &child.fs) {
+            return Err(FsError::NotSameFs);
+        }
+        if child.metadata()?.type_ == vfs::FileType::Dir {
+            return Err(FsError::IsDir);
+        }
+        let entry = DiskEntry {
+            id: child.id as u32,
+            name: Str256::from(name),
+        };
+        let old_size = self._size();
+        self._resize(old_size + BLKSIZE)?;
+        self._write_at(old_size, entry.as_buf()).unwrap();
+        child.nlinks_inc();
+        Ok(())
+    }
 }
 
 impl vfs::INode for INodeImpl {
@@ -801,6 +830,17 @@ impl SimpleFileSystem {
         free_map.set(block_id, true);
         self.super_block.write().unused_blocks += 1;
         trace!("free block {:#x}", block_id);
+    }
+
+    pub fn new_device_inode(&self, device_inode_id: usize, device_inode: Arc<DeviceINode>) {
+        self.device_inodes.write().insert(device_inode_id, device_inode);
+    }
+
+    pub fn get_device_inode(&self, device_inode_id: usize) -> vfs::Result<Arc<DeviceINode>> {
+        match self.device_inodes.read().get(&device_inode_id) {
+            Some(x) => Ok(Arc::clone(x)),
+            None => Err(FsError::DeviceError)
+        }
     }
 
     /// Create a new INode struct, then insert it to self.inodes
