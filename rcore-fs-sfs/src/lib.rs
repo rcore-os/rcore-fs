@@ -388,14 +388,14 @@ impl vfs::INode for INodeImpl {
                 let device_inodes = self.fs.device_inodes.read();
                 let device_inode = device_inodes.get(&self.device_inode_id);
                 match device_inode {
-                    Some(device) => device.read().read_at(offset, buf),
+                    Some(device) => device.read_at(offset, buf),
                     None => Err(FsError::DeviceError)
                 }
             },
             _ => Err(FsError::NotFile)
         }
     }
-    fn write_at(&mut self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
+    fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
         let DiskINode { type_, size, .. } = **self.disk_inode.read();
         match type_ {
             FileType::File | FileType::SymLink => {
@@ -409,7 +409,7 @@ impl vfs::INode for INodeImpl {
                 let device_inodes = self.fs.device_inodes.write();
                 let device_inode = device_inodes.get(&self.device_inode_id);
                 match device_inode {
-                    Some(device) => device.write().write_at(offset, buf),
+                    Some(device) => device.write_at(offset, buf),
                     None => Err(FsError::DeviceError)
                 }
             },
@@ -696,7 +696,7 @@ pub struct SimpleFileSystem {
     /// Pointer to self, used by INodes
     self_ptr: Weak<SimpleFileSystem>,
     /// device inode
-    device_inodes: RwLock<BTreeMap<usize, RwLock<Box<DeviceINode>>>>
+    device_inodes: RwLock<BTreeMap<usize, Arc<DeviceINode>>>
 }
 
 impl SimpleFileSystem {
