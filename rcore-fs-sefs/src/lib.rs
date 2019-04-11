@@ -18,7 +18,7 @@ use bitvec::BitVec;
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
-//use log::*;
+use log::*;
 use spin::RwLock;
 
 use self::dev::*;
@@ -468,11 +468,18 @@ impl SEFS {
         if !super_block.check() {
             return Err(FsError::WrongFs);
         }
-        let free_map = meta_file.load_struct::<[u8; BLKSIZE]>(BLKN_FREEMAP)?;
+
+        // load free map
+        let mut free_map = BitVec::with_capacity(BLKBITS * super_block.groups as usize);
+        unsafe { free_map.set_len(BLKBITS * super_block.groups as usize); }
+        for i in 0..super_block.groups as usize {
+            let block_id = Self::get_freemap_block_id_of_group(i);
+            meta_file.read_block(block_id, &mut free_map.as_mut()[BLKSIZE * i..BLKSIZE * (i+1)])?;
+        }
 
         Ok(SEFS {
             super_block: RwLock::new(Dirty::new(super_block)),
-            free_map: RwLock::new(Dirty::new(BitVec::from(free_map.as_ref()))),
+            free_map: RwLock::new(Dirty::new(free_map)),
             inodes: RwLock::new(BTreeMap::new()),
             device,
             meta_file,
@@ -665,6 +672,7 @@ impl vfs::FileSystem for SEFS {
                 inode.sync_all()?;
             }
         }
+        self.meta_file.flush()?;
         Ok(())
     }
 
