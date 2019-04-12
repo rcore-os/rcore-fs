@@ -846,17 +846,7 @@ impl SimpleFileSystem {
     /// Create a new INode struct, then insert it to self.inodes
     /// Private used for load or create INode
     fn _new_inode(&self, id: INodeId, disk_inode: Dirty<DiskINode>) -> Arc<INodeImpl> {
-        let inode = Arc::new(INodeImpl {
-            id,
-            disk_inode: RwLock::new(disk_inode),
-            fs: self.self_ptr.upgrade().unwrap(),
-            device_inode_id: NODEVICE
-        });
-        self.inodes.write().insert(id, Arc::downgrade(&inode));
-        inode
-    }
-
-    fn _new_inode_with_device(&self, id: INodeId, disk_inode: Dirty<DiskINode>, device_inode_id: usize) -> Arc<INodeImpl> {
+        let device_inode_id = disk_inode.device_inode_id;
         let inode = Arc::new(INodeImpl {
             id,
             disk_inode: RwLock::new(disk_inode),
@@ -866,6 +856,7 @@ impl SimpleFileSystem {
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode
     }
+
     /// Get inode by id. Load if not in memory.
     /// ** Must ensure it's a valid INode **
     fn get_inode(&self, id: INodeId) -> Arc<INodeImpl> {
@@ -904,8 +895,8 @@ impl SimpleFileSystem {
     /// Create a new INode chardevice
     pub fn new_inode_chardevice(&self, device_inode_id: usize) -> vfs::Result<Arc<INodeImpl>> {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
-        let disk_inode = Dirty::new_dirty(DiskINode::new_chardevice());
-        let new_inode = self._new_inode_with_device(id, disk_inode, device_inode_id);
+        let disk_inode = Dirty::new_dirty(DiskINode::new_chardevice(device_inode_id));
+        let new_inode = self._new_inode(id, disk_inode);
         Ok(new_inode)
     }
     fn flush_weak_inodes(&self) {

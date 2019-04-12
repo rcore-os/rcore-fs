@@ -44,6 +44,8 @@ pub struct DiskINode {
     pub indirect: u32,
     /// double indirect blocks
     pub db_indirect: u32,
+    /// device inode id
+    pub device_inode_id: usize
 }
 
 /*
@@ -134,6 +136,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: NODEVICE
         }
     }
     pub const fn new_symlink() -> Self {
@@ -145,6 +148,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: NODEVICE
         }
     }
     pub const fn new_dir() -> Self {
@@ -156,9 +160,10 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: NODEVICE
         }
     }
-    pub const fn new_chardevice() -> Self {
+    pub const fn new_chardevice(device_inode_id: usize) -> Self {
         DiskINode {
             size: 0,
             type_: FileType::CharDevice,
@@ -167,6 +172,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: device_inode_id
         }
     }
 }
