@@ -406,6 +406,21 @@ impl INodeImpl {
         child.nlinks_inc();
         Ok(())
     }
+
+    pub fn call_ioctl(&self, request: u32, data: *mut u8) -> Result<(), IOCTLError> {
+        if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
+            return Err(IOCTLError::NotCharDevice);
+        }
+        let device_inodes = self.fs.device_inodes.read();
+        let device_inode = device_inodes.get(&self.device_inode_id);
+        match device_inode {
+            Some(x) => { x.ioctl(request, data) }
+            None => {
+                warn!("cannot find corresponding device inode in call_inoctl");
+                Err(IOCTLError::NotCharDevice)
+            }
+        }
+    }
 }
 
 impl vfs::INode for INodeImpl {
@@ -834,13 +849,6 @@ impl SimpleFileSystem {
 
     pub fn new_device_inode(&self, device_inode_id: usize, device_inode: Arc<DeviceINode>) {
         self.device_inodes.write().insert(device_inode_id, device_inode);
-    }
-
-    pub fn get_device_inode(&self, device_inode_id: usize) -> vfs::Result<Arc<DeviceINode>> {
-        match self.device_inodes.read().get(&device_inode_id) {
-            Some(x) => Ok(Arc::clone(x)),
-            None => Err(FsError::DeviceError)
-        }
     }
 
     /// Create a new INode struct, then insert it to self.inodes

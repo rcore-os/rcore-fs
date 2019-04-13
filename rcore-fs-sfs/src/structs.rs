@@ -55,7 +55,23 @@ pub trait DeviceINode : Any + Sync + Send{
 }
 */
 
-pub type DeviceINode = vfs::INode;
+// pub type DeviceINode = vfs::INode;
+pub trait DeviceINode : vfs::INode {
+    fn ioctl(&self, request: u32, data: *mut u8) -> Result<(), IOCTLError>;
+}
+
+impl DeviceINode {
+    fn ioctl(&self, request: u32, data: *mut u8) -> Result<(), IOCTLError> {
+        Ok(())
+    }
+}
+
+pub enum IOCTLError {
+    NotValidFD = 9, // EBADF
+    NotValidMemory = 14, // EFAULT
+    NotValidParam = 22, // EINVAL
+    NotCharDevice = 25, // ENOTTY
+}
 
 #[repr(C)]
 pub struct IndirectBlock {
