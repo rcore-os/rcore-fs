@@ -406,21 +406,6 @@ impl INodeImpl {
         child.nlinks_inc();
         Ok(())
     }
-
-    pub fn call_ioctl(&self, request: u32, data: *mut u8) -> Result<(), IOCTLError> {
-        if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
-            return Err(IOCTLError::NotCharDevice);
-        }
-        let device_inodes = self.fs.device_inodes.read();
-        let device_inode = device_inodes.get(&self.device_inode_id);
-        match device_inode {
-            Some(x) => { x.ioctl(request, data) }
-            None => {
-                warn!("cannot find corresponding device inode in call_inoctl");
-                Err(IOCTLError::NotCharDevice)
-            }
-        }
-    }
 }
 
 impl vfs::INode for INodeImpl {
@@ -706,6 +691,21 @@ impl vfs::INode for INodeImpl {
     }
     fn as_any_ref(&self) -> &Any {
         self
+    }
+
+    fn ioctl(&self, request: u32, data: *mut u8) -> Result<(), vfs::IOCTLError> {
+        if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
+            return Err(vfs::IOCTLError::NotCharDevice);
+        }
+        let device_inodes = self.fs.device_inodes.read();
+        let device_inode = device_inodes.get(&self.device_inode_id);
+        match device_inode {
+            Some(x) => { x.ioctl(request, data) }
+            None => {
+                warn!("cannot find corresponding device inode in call_inoctl");
+                Err(vfs::IOCTLError::NotCharDevice)
+            }
+        }
     }
 }
 

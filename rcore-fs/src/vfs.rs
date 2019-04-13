@@ -32,6 +32,7 @@ pub trait INode: Any + Sync + Send {
     /// this is used to implement dynamics cast
     /// simply return self in the implement of the function
     fn as_any_ref(&self) -> &Any;
+    fn ioctl(&self, request: u32, data: *mut u8) -> result::Result<(), IOCTLError>;
 }
 
 impl INode {
@@ -111,6 +112,14 @@ impl INode {
         }
         Ok(result)
     }
+
+}
+
+pub enum IOCTLError {
+    NotValidFD = 9, // EBADF
+    NotValidMemory = 14, // EFAULT
+    NotValidParam = 22, // EINVAL
+    NotCharDevice = 25, // ENOTTY
 }
 
 /// Metadata of INode
