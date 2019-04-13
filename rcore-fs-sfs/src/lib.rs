@@ -26,7 +26,7 @@ use rcore_fs::dirty::Dirty;
 use rcore_fs::util::*;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
 
-use self::structs::*;
+pub use self::structs::*;
 
 mod structs;
 #[cfg(test)]
