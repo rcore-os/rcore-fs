@@ -411,7 +411,7 @@ impl vfs::INode for INodeImpl {
         let entry = self.file.read_direntry(id)?;
         Ok(String::from(entry.name.as_ref()))
     }
-    fn io_control(&self, _cmd: u32, _data: u32) -> vfs::Result<()> {
+    fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<()> {
         Err(FsError::NotSupported)
     }
     fn fs(&self) -> Arc<vfs::FileSystem> {

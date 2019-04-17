@@ -50,7 +50,7 @@ pub trait INode: Any + Sync + Send {
     fn get_entry(&self, id: usize) -> Result<String>;
 
     /// Control device
-    fn io_control(&self, cmd: u32, data: u32) -> Result<()>;
+    fn io_control(&self, cmd: u32, data: usize) -> Result<()>;
 
     /// Get the file system of the INode
     fn fs(&self) -> Arc<FileSystem>;
