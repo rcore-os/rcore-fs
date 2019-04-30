@@ -189,7 +189,7 @@ pub struct Timespec {
     pub nsec: i32,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
     File,
     Dir,
