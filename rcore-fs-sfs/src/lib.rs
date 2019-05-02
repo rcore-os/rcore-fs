@@ -35,14 +35,14 @@ trait DeviceExt: Device {
     fn read_block(&self, id: BlockId, offset: usize, buf: &mut [u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.read_at(id * BLKSIZE + offset, buf) {
-            Some(len) if len == buf.len() => Ok(()),
+            Ok(len) if len == buf.len() => Ok(()),
             _ => panic!("cannot read block {} offset {} from device", id, offset),
         }
     }
     fn write_block(&self, id: BlockId, offset: usize, buf: &[u8]) -> vfs::Result<()> {
         debug_assert!(offset + buf.len() <= BLKSIZE);
         match self.write_at(id * BLKSIZE + offset, buf) {
-            Some(len) if len == buf.len() => Ok(()),
+            Ok(len) if len == buf.len() => Ok(()),
             _ => panic!("cannot write block {} offset {} to device", id, offset),
         }
     }
@@ -213,7 +213,7 @@ impl INodeImpl {
         if blocks > MAX_NBLOCK_DOUBLE_INDIRECT as u32 {
             return Err(FsError::InvalidParam);
         }
-        use core::cmp::{Ord, Ordering};
+        use core::cmp::Ordering;
         let old_blocks = self.disk_inode.read().blocks;
         match blocks.cmp(&old_blocks) {
             Ordering::Equal => {} // Do nothing
