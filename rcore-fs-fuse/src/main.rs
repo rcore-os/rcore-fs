@@ -6,6 +6,7 @@ use structopt::StructOpt;
 
 use rcore_fs::dev::std_impl::StdTimeProvider;
 use rcore_fs::vfs::FileSystem;
+#[cfg(feature = "use_fuse")]
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
 use rcore_fs_sefs as sefs;
@@ -41,6 +42,7 @@ enum Cmd {
     Unzip,
 
     /// Mount <image> to <dir>
+    #[cfg(feature = "use_fuse")]
     #[structopt(name = "mount")]
     Mount,
 }
@@ -51,6 +53,7 @@ fn main() {
 
     // open or create
     let create = match opt.cmd {
+        #[cfg(feature = "use_fuse")]
         Cmd::Mount => !opt.image.is_dir() && !opt.image.is_file(),
         Cmd::Zip => true,
         Cmd::Unzip => false,
@@ -84,6 +87,7 @@ fn main() {
         _ => panic!("unsupported file system"),
     };
     match opt.cmd {
+        #[cfg(feature = "use_fuse")]
         Cmd::Mount => {
             fuse::mount(VfsFuse::new(fs), &opt.dir, &[]).expect("failed to mount fs");
         }
