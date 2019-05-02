@@ -1,6 +1,7 @@
 use crate::util::*;
 use crate::vfs::Timespec;
 
+pub mod block_cache;
 pub mod std_impl;
 
 /// A current time provider
