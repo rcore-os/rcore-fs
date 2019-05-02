@@ -1,9 +1,9 @@
+use crate::dev::DevError;
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::any::Any;
 use core::fmt;
 use core::result;
 use core::str;
-use crate::dev::DevError;
 
 /// Abstract file system object such as file or directory.
 pub trait INode: Any + Sync + Send {
@@ -73,7 +73,11 @@ impl INode {
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
-        (0..info.size).map(|i| self.get_entry(i)).collect()
+        Ok((0..)
+            .map(|i| self.get_entry(i))
+            .take_while(|result| result.is_ok())
+            .filter_map(|result| result.ok())
+            .collect())
     }
 
     /// Lookup path from current INode, and do not follow symlinks
@@ -116,8 +120,7 @@ impl INode {
                 follow_times -= 1;
                 let mut content = [0u8; 256];
                 let len = inode.read_at(0, &mut content)?;
-                let path = str::from_utf8(&content[..len])
-                    .map_err(|_| FsError::NotDir)?;
+                let path = str::from_utf8(&content[..len]).map_err(|_| FsError::NotDir)?;
                 // result remains unchanged
                 rest_path = {
                     let mut new_path = String::from(path);
