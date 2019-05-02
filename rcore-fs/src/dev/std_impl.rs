@@ -44,7 +44,7 @@ impl TimeProvider for StdTimeProvider {
 }
 
 impl From<Error> for DevError {
-    fn from(e: Error) -> Self {
+    fn from(_: Error) -> Self {
         DevError
     }
 }

@@ -10,8 +10,8 @@ use alloc::{
     collections::BTreeMap,
     string::String,
     sync::{Arc, Weak},
-    vec::Vec,
     vec,
+    vec::Vec,
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -49,19 +49,20 @@ trait DeviceExt: Device {
     /// Load struct `T` from given block in device
     fn load_struct<T: AsBuf>(&self, id: BlockId) -> vfs::Result<T> {
         let mut s: T = unsafe { uninitialized() };
-        self.read_block(id, 0, s.as_buf_mut()).map(|_| s)
+        self.read_block(id, 0, s.as_buf_mut())?;
+        Ok(s)
     }
 }
 
 impl DeviceExt for Device {}
 
-/// inode for sfs
+/// INode for SFS
 pub struct INodeImpl {
-    /// inode number
+    /// INode number
     id: INodeId,
-    /// on-disk inode
+    /// On-disk INode
     disk_inode: RwLock<Dirty<DiskINode>>,
-    /// Weak reference to SFS, used by almost all operations
+    /// Reference to SFS, used by almost all operations
     fs: Arc<SimpleFileSystem>,
 }
 
@@ -152,13 +153,8 @@ impl INodeImpl {
     }
     /// Only for Dir
     fn get_file_inode_and_entry_id(&self, name: &str) -> Option<(INodeId, usize)> {
-        (0..self.disk_inode.read().blocks)
-            .map(|i| {
-                let mut entry: DiskEntry = unsafe { uninitialized() };
-                self._read_at(i as usize * BLKSIZE, entry.as_buf_mut())
-                    .unwrap();
-                (entry, i)
-            })
+        (0..self.disk_inode.read().size as usize / DIRENT_SIZE)
+            .map(|i| (self.read_direntry(i as usize).unwrap(), i))
             .find(|(entry, _)| entry.name.as_ref() == name)
             .map(|(entry, id)| (entry.id as INodeId, id as usize))
     }
@@ -168,40 +164,50 @@ impl INodeImpl {
     }
     /// Init dir content. Insert 2 init entries.
     /// This do not init nlinks, please modify the nlinks in the invoker.
-    fn init_dir_entry(&self, parent: INodeId) -> vfs::Result<()> {
+    fn init_direntry(&self, parent: INodeId) -> vfs::Result<()> {
         // Insert entries: '.' '..'
-        self._resize(BLKSIZE * 2)?;
-        self._write_at(
-            BLKSIZE * 1,
-            DiskEntry {
-                id: parent as u32,
-                name: Str256::from(".."),
-            }
-            .as_buf(),
-        )
-        .unwrap();
-        self._write_at(
-            BLKSIZE * 0,
-            DiskEntry {
+        self._resize(DIRENT_SIZE * 2)?;
+        self.write_direntry(
+            0,
+            &DiskEntry {
                 id: self.id as u32,
                 name: Str256::from("."),
-            }
-            .as_buf(),
-        )
-        .unwrap();
+            },
+        )?;
+        self.write_direntry(
+            1,
+            &DiskEntry {
+                id: parent as u32,
+                name: Str256::from(".."),
+            },
+        )?;
         Ok(())
     }
-    /// remove a page in middle of file and insert the last page here, useful for dirent remove
+    fn read_direntry(&self, id: usize) -> vfs::Result<DiskEntry> {
+        let mut direntry: DiskEntry = unsafe { uninitialized() };
+        self._read_at(DIRENT_SIZE * id, direntry.as_buf_mut())?;
+        Ok(direntry)
+    }
+    fn write_direntry(&self, id: usize, direntry: &DiskEntry) -> vfs::Result<()> {
+        self._write_at(DIRENT_SIZE * id, direntry.as_buf())?;
+        Ok(())
+    }
+    fn append_direntry(&self, direntry: &DiskEntry) -> vfs::Result<()> {
+        let size = self.disk_inode.read().size as usize;
+        let dirent_count = size / DIRENT_SIZE;
+        self._resize(size + DIRENT_SIZE)?;
+        self.write_direntry(dirent_count, direntry)?;
+        Ok(())
+    }
+    /// remove a direntry in middle of file and insert the last one here, useful for direntry remove
     /// should be only used in unlink
-    fn remove_dirent_page(&self, id: usize) -> vfs::Result<()> {
-        debug_assert!(id < self.disk_inode.read().blocks as usize);
-        let to_remove = self.get_disk_block_id(id)?;
-        let current_last = self.get_disk_block_id(self.disk_inode.read().blocks as usize - 1)?;
-        self.set_disk_block_id(id, current_last)?;
-        self.disk_inode.write().blocks -= 1;
-        let new_size = self.disk_inode.read().blocks as usize * BLKSIZE;
-        self._set_size(new_size);
-        self.fs.free_block(to_remove);
+    fn remove_direntry(&self, id: usize) -> vfs::Result<()> {
+        let size = self.disk_inode.read().size as usize;
+        let dirent_count = size / DIRENT_SIZE;
+        debug_assert!(id < dirent_count);
+        let last_dirent = self.read_direntry(dirent_count - 1)?;
+        self.write_direntry(id, &last_dirent)?;
+        self._resize(size - DIRENT_SIZE)?;
         Ok(())
     }
     /// Resize content size, no matter what type it is.
@@ -216,47 +222,50 @@ impl INodeImpl {
         use core::cmp::Ordering;
         let old_blocks = self.disk_inode.read().blocks;
         match blocks.cmp(&old_blocks) {
-            Ordering::Equal => {} // Do nothing
+            Ordering::Equal => {
+                self.disk_inode.write().size = len as u32;
+            }
             Ordering::Greater => {
-                {
-                    let mut disk_inode = self.disk_inode.write();
-                    disk_inode.blocks = blocks;
-                    // allocate indirect block if needed
-                    if old_blocks < MAX_NBLOCK_DIRECT as u32 && blocks >= MAX_NBLOCK_DIRECT as u32 {
-                        disk_inode.indirect = self.fs.alloc_block().expect("no space") as u32;
+                let mut disk_inode = self.disk_inode.write();
+                disk_inode.blocks = blocks;
+                // allocate indirect block if needed
+                if old_blocks < MAX_NBLOCK_DIRECT as u32 && blocks >= MAX_NBLOCK_DIRECT as u32 {
+                    disk_inode.indirect = self.fs.alloc_block().expect("no space") as u32;
+                }
+                // allocate double indirect block if needed
+                if blocks >= MAX_NBLOCK_INDIRECT as u32 {
+                    if disk_inode.db_indirect == 0 {
+                        disk_inode.db_indirect = self.fs.alloc_block().expect("no space") as u32;
                     }
-                    // allocate double indirect block if needed
-                    if blocks >= MAX_NBLOCK_INDIRECT as u32 {
-                        if disk_inode.db_indirect == 0 {
-                            disk_inode.db_indirect = self.fs.alloc_block().expect("no space") as u32;
+                    let indirect_begin = {
+                        if (old_blocks as usize) < MAX_NBLOCK_INDIRECT {
+                            0
+                        } else {
+                            (old_blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1
                         }
-                        let indirect_begin = {
-                            if (old_blocks as usize) < MAX_NBLOCK_INDIRECT {
-                                0
-                            } else {
-                                (old_blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1
-                            }
-                        };
-                        let indirect_end = (blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1;
-                        for i in indirect_begin..indirect_end {
-                            let indirect = self.fs.alloc_block().expect("no space") as u32;
-                            self.fs.device.write_block(
-                                disk_inode.db_indirect as usize,
-                                ENTRY_SIZE * i,
-                                indirect.as_buf(),
-                            )?;
-                        }
+                    };
+                    let indirect_end = (blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1;
+                    for i in indirect_begin..indirect_end {
+                        let indirect = self.fs.alloc_block().expect("no space") as u32;
+                        self.fs.device.write_block(
+                            disk_inode.db_indirect as usize,
+                            ENTRY_SIZE * i,
+                            indirect.as_buf(),
+                        )?;
                     }
                 }
+                drop(disk_inode);
                 // allocate extra blocks
                 for i in old_blocks..blocks {
                     let disk_block_id = self.fs.alloc_block().expect("no space");
                     self.set_disk_block_id(i as usize, disk_block_id)?;
                 }
                 // clean up
-                let old_size = self._size();
-                self._set_size(len);
-                self._clean_at(old_size, len).unwrap();
+                let mut disk_inode = self.disk_inode.write();
+                let old_size = disk_inode.size as usize;
+                disk_inode.size = len as u32;
+                drop(disk_inode);
+                self._clean_at(old_size, len)?;
             }
             Ordering::Less => {
                 // free extra blocks
@@ -266,7 +275,9 @@ impl INodeImpl {
                 }
                 let mut disk_inode = self.disk_inode.write();
                 // free indirect block if needed
-                if blocks < MAX_NBLOCK_DIRECT as u32 && disk_inode.blocks >= MAX_NBLOCK_DIRECT as u32 {
+                if blocks < MAX_NBLOCK_DIRECT as u32
+                    && disk_inode.blocks >= MAX_NBLOCK_DIRECT as u32
+                {
                     self.fs.free_block(disk_inode.indirect as usize);
                     disk_inode.indirect = 0;
                 }
@@ -279,7 +290,8 @@ impl INodeImpl {
                             (blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1
                         }
                     };
-                    let indirect_end = (disk_inode.blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1;
+                    let indirect_end =
+                        (disk_inode.blocks as usize - MAX_NBLOCK_INDIRECT) / BLK_NENTRY + 1;
                     for i in indirect_begin..indirect_end {
                         let mut indirect: u32 = 0;
                         self.fs.device.read_block(
@@ -297,30 +309,10 @@ impl INodeImpl {
                     }
                 }
                 disk_inode.blocks = blocks;
+                disk_inode.size = len as u32;
             }
         }
-        self._set_size(len);
         Ok(())
-    }
-    /// Get the actual size of this inode,
-    /// since size in inode for dir is not real size
-    fn _size(&self) -> usize {
-        let disk_inode = self.disk_inode.read();
-        match disk_inode.type_ {
-            FileType::Dir => disk_inode.blocks as usize * BLKSIZE,
-            FileType::File | FileType::SymLink => disk_inode.size as usize,
-            _ => panic!("Unknown file type"),
-        }
-    }
-    /// Set the ucore compat size of this inode,
-    /// Size in inode for dir is size of entries
-    fn _set_size(&self, len: usize) {
-        let mut disk_inode = self.disk_inode.write();
-        disk_inode.size = match disk_inode.type_ {
-            FileType::Dir => disk_inode.blocks as usize * DIRENT_SIZE,
-            FileType::File | FileType::SymLink => len,
-            _ => panic!("Unknown file type"),
-        } as u32
     }
     // Note: the _\w*_at method always return begin>size?0:begin<end?0:(min(size,end)-begin) when success
     /// Read/Write content, no matter what type it is
@@ -328,7 +320,7 @@ impl INodeImpl {
     where
         F: FnMut(&Arc<Device>, &BlockRange, usize) -> vfs::Result<()>,
     {
-        let size = self._size();
+        let size = self.disk_inode.read().size as usize;
         let iter = BlockIter {
             begin: size.min(begin),
             end: size.min(end),
@@ -402,7 +394,7 @@ impl vfs::INode for INodeImpl {
         Ok(vfs::PollStatus {
             read: true,
             write: true,
-            error: false
+            error: false,
         })
     }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
@@ -411,11 +403,7 @@ impl vfs::INode for INodeImpl {
         Ok(vfs::Metadata {
             dev: 0,
             inode: self.id,
-            size: match disk_inode.type_ {
-                FileType::File | FileType::SymLink => disk_inode.size as usize,
-                FileType::Dir => disk_inode.blocks as usize,
-                _ => panic!("Unknown file type"),
-            },
+            size: disk_inode.size as usize,
             mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
@@ -476,13 +464,10 @@ impl vfs::INode for INodeImpl {
         };
 
         // Write new entry
-        let entry = DiskEntry {
+        self.append_direntry(&DiskEntry {
             id: inode.id as u32,
             name: Str256::from(name),
-        };
-        let old_size = self._size();
-        self._resize(old_size + BLKSIZE)?;
-        self._write_at(old_size, entry.as_buf()).unwrap();
+        })?;
         inode.nlinks_inc();
         if type_ == vfs::FileType::Dir {
             inode.nlinks_inc(); //for .
@@ -511,13 +496,10 @@ impl vfs::INode for INodeImpl {
         if child.metadata()?.type_ == vfs::FileType::Dir {
             return Err(FsError::IsDir);
         }
-        let entry = DiskEntry {
+        self.append_direntry(&DiskEntry {
             id: child.id as u32,
             name: Str256::from(name),
-        };
-        let old_size = self._size();
-        self._resize(old_size + BLKSIZE)?;
-        self._write_at(old_size, entry.as_buf()).unwrap();
+        })?;
         child.nlinks_inc();
         Ok(())
     }
@@ -544,8 +526,7 @@ impl vfs::INode for INodeImpl {
         let type_ = inode.disk_inode.read().type_;
         if type_ == FileType::Dir {
             // only . and ..
-            assert!(inode.disk_inode.read().blocks >= 2);
-            if inode.disk_inode.read().blocks > 2 {
+            if inode.disk_inode.read().size as usize / DIRENT_SIZE > 2 {
                 return Err(FsError::DirNotEmpty);
             }
         }
@@ -554,7 +535,7 @@ impl vfs::INode for INodeImpl {
             inode.nlinks_dec(); //for .
             self.nlinks_dec(); //for ..
         }
-        self.remove_dirent_page(entry_id)?;
+        self.remove_direntry(entry_id)?;
 
         Ok(())
     }
@@ -595,31 +576,27 @@ impl vfs::INode for INodeImpl {
             .ok_or(FsError::EntryNotFound)?;
         if info.inode == dest_info.inode {
             // rename: in place modify name
-            let mut entry: DiskEntry = unsafe { uninitialized() };
-            let entry_pos = entry_id as usize * BLKSIZE;
-            self._read_at(entry_pos, entry.as_buf_mut()).unwrap();
-            entry.name = Str256::from(new_name);
-            self._write_at(entry_pos, entry.as_buf()).unwrap();
+            self.write_direntry(
+                entry_id,
+                &DiskEntry {
+                    id: inode_id as u32,
+                    name: Str256::from(new_name),
+                },
+            )?;
         } else {
             // move
-            let inode = self.fs.get_inode(inode_id);
-
-            let entry = DiskEntry {
+            dest.append_direntry(&DiskEntry {
                 id: inode_id as u32,
                 name: Str256::from(new_name),
-            };
-            let old_size = dest._size();
-            dest._resize(old_size + BLKSIZE)?;
-            dest._write_at(old_size, entry.as_buf()).unwrap();
+            })?;
+            self.remove_direntry(entry_id)?;
 
-            self.remove_dirent_page(entry_id)?;
-
+            let inode = self.fs.get_inode(inode_id);
             if inode.metadata()?.type_ == vfs::FileType::Dir {
                 self.nlinks_dec();
                 dest.nlinks_inc();
             }
         }
-
         Ok(())
     }
     fn find(&self, name: &str) -> vfs::Result<Arc<vfs::INode>> {
@@ -634,12 +611,10 @@ impl vfs::INode for INodeImpl {
         if self.disk_inode.read().type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
-        if id >= self.disk_inode.read().blocks as usize {
+        if id >= self.disk_inode.read().size as usize / DIRENT_SIZE {
             return Err(FsError::EntryNotFound);
         };
-        let mut entry: DiskEntry = unsafe { uninitialized() };
-        self._read_at(id as usize * BLKSIZE, entry.as_buf_mut())
-            .unwrap();
+        let entry = self.read_direntry(id)?;
         Ok(String::from(entry.name.as_ref()))
     }
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<()> {
@@ -688,13 +663,17 @@ pub struct SimpleFileSystem {
 impl SimpleFileSystem {
     /// Load SFS from device
     pub fn open(device: Arc<Device>) -> vfs::Result<Arc<Self>> {
-        let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER).unwrap();
+        let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER)?;
         if !super_block.check() {
             return Err(FsError::WrongFs);
         }
         let mut freemap_disk = vec![0u8; BLKSIZE * super_block.freemap_blocks as usize];
         for i in 0..super_block.freemap_blocks as usize {
-            device.read_block(BLKN_FREEMAP + i, 0, &mut freemap_disk[i * BLKSIZE..(i+1) *BLKSIZE])?;
+            device.read_block(
+                BLKN_FREEMAP + i,
+                0,
+                &mut freemap_disk[i * BLKSIZE..(i + 1) * BLKSIZE],
+            )?;
         }
 
         Ok(SimpleFileSystem {
@@ -707,7 +686,7 @@ impl SimpleFileSystem {
         .wrap())
     }
     /// Create a new SFS on blank disk
-    pub fn create(device: Arc<Device>, space: usize) -> Arc<Self> {
+    pub fn create(device: Arc<Device>, space: usize) -> vfs::Result<Arc<Self>> {
         let blocks = (space + BLKSIZE - 1) / BLKSIZE;
         let freemap_blocks = (space + BLKBITS * BLKSIZE - 1) / BLKBITS / BLKSIZE;
         assert!(blocks >= 16, "space too small");
@@ -739,12 +718,12 @@ impl SimpleFileSystem {
 
         // Init root INode
         let root = sfs._new_inode(BLKN_ROOT, Dirty::new_dirty(DiskINode::new_dir()));
-        root.init_dir_entry(BLKN_ROOT).unwrap();
+        root.init_direntry(BLKN_ROOT)?;
         root.nlinks_inc(); //for .
         root.nlinks_inc(); //for ..(root's parent is itself)
-        root.sync_all().unwrap();
+        root.sync_all()?;
 
-        sfs
+        Ok(sfs)
     }
     /// Wrap pure SimpleFileSystem with Arc
     /// Used in constructors
@@ -830,7 +809,7 @@ impl SimpleFileSystem {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
         let disk_inode = Dirty::new_dirty(DiskINode::new_dir());
         let inode = self._new_inode(id, disk_inode);
-        inode.init_dir_entry(parent)?;
+        inode.init_direntry(parent)?;
         Ok(inode)
     }
     fn flush_weak_inodes(&self) {
@@ -852,17 +831,17 @@ impl vfs::FileSystem for SimpleFileSystem {
         let mut super_block = self.super_block.write();
         if super_block.dirty() {
             self.device
-                .write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf())
-                .unwrap();
+                .write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf())?;
             super_block.sync();
         }
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
             let data = free_map.as_buf();
             for i in 0..super_block.freemap_blocks as usize {
-                self.device
-                    .write_at(BLKSIZE * (BLKN_FREEMAP + i), &data[i * BLKSIZE..(i+1) * BLKSIZE])
-                    .unwrap();
+                self.device.write_at(
+                    BLKSIZE * (BLKN_FREEMAP + i),
+                    &data[i * BLKSIZE..(i + 1) * BLKSIZE],
+                )?;
             }
             free_map.sync();
         }
@@ -872,6 +851,7 @@ impl vfs::FileSystem for SimpleFileSystem {
                 inode.sync_all()?;
             }
         }
+        self.device.sync()?;
         Ok(())
     }
 

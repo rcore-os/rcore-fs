@@ -3,6 +3,7 @@ use core::any::Any;
 use core::fmt;
 use core::result;
 use core::str;
+use crate::dev::DevError;
 
 /// Abstract file system object such as file or directory.
 pub trait INode: Any + Sync + Send {
@@ -245,6 +246,12 @@ pub enum FsError {
 impl fmt::Display for FsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+impl From<DevError> for FsError {
+    fn from(_: DevError) -> Self {
+        FsError::DeviceError
     }
 }
 
