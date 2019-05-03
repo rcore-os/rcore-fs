@@ -71,7 +71,7 @@ pub fn unzip_dir(path: &Path, inode: Arc<INode>) -> Result<(), Box<Error>> {
             FileType::SymLink => {
                 let mut buf: [u8; BUF_SIZE] = unsafe { uninitialized() };
                 let len = inode.read_at(0, buf.as_mut())?;
-                std::os::unix::fs::symlink(path, str::from_utf8(&buf[..len]).unwrap())?;
+                std::os::unix::fs::symlink(str::from_utf8(&buf[..len]).unwrap(), path)?;
             }
             _ => panic!("unsupported file type"),
         }
