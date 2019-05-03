@@ -12,6 +12,8 @@ use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
 use rcore_fs_sefs as sefs;
 use rcore_fs_sfs as sfs;
 
+use git_version::git_version;
+
 #[derive(Debug, StructOpt)]
 struct Opt {
     /// Command
@@ -45,6 +47,9 @@ enum Cmd {
     #[cfg(feature = "use_fuse")]
     #[structopt(name = "mount")]
     Mount,
+
+    #[structopt(name = "git-version")]
+    GitVersion,
 }
 
 fn main() {
@@ -57,6 +62,10 @@ fn main() {
         Cmd::Mount => !opt.image.is_dir() && !opt.image.is_file(),
         Cmd::Zip => true,
         Cmd::Unzip => false,
+        Cmd::GitVersion => {
+            println!("{}", git_version!());
+            return;
+        }
     };
 
     let fs: Arc<FileSystem> = match opt.fs.as_str() {
@@ -99,5 +108,6 @@ fn main() {
             std::fs::create_dir(&opt.dir).expect("failed to create dir");
             unzip_dir(&opt.dir, fs.root_inode()).expect("failed to unzip fs");
         }
+        Cmd::GitVersion => unreachable!(),
     }
 }
