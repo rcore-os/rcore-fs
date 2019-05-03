@@ -1,7 +1,7 @@
 #![cfg(any(test, feature = "std"))]
 
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write, Error};
+use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 

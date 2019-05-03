@@ -15,10 +15,10 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
+use log::*;
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
-use log::*;
 use spin::RwLock;
 
 use self::dev::*;
@@ -162,7 +162,7 @@ impl vfs::INode for INodeImpl {
         Ok(vfs::PollStatus {
             read: true,
             write: true,
-            error: false
+            error: false,
         })
     }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
@@ -471,10 +471,15 @@ impl SEFS {
 
         // load free map
         let mut free_map = BitVec::with_capacity(BLKBITS * super_block.groups as usize);
-        unsafe { free_map.set_len(BLKBITS * super_block.groups as usize); }
+        unsafe {
+            free_map.set_len(BLKBITS * super_block.groups as usize);
+        }
         for i in 0..super_block.groups as usize {
             let block_id = Self::get_freemap_block_id_of_group(i);
-            meta_file.read_block(block_id, &mut free_map.as_mut()[BLKSIZE * i..BLKSIZE * (i+1)])?;
+            meta_file.read_block(
+                block_id,
+                &mut free_map.as_mut()[BLKSIZE * i..BLKSIZE * (i + 1)],
+            )?;
         }
 
         Ok(SEFS {
@@ -557,7 +562,8 @@ impl SEFS {
             super_block.groups += 1;
             super_block.blocks += BLKBITS as u32;
             super_block.unused_blocks += BLKBITS as u32 - 1;
-            self.meta_file.set_len(super_block.groups as usize * BLKBITS * BLKSIZE)
+            self.meta_file
+                .set_len(super_block.groups as usize * BLKBITS * BLKSIZE)
                 .expect("failed to extend meta file");
             free_map.extend(core::iter::repeat(true).take(BLKBITS));
             free_map.set(Self::get_freemap_block_id_of_group(new_group_id), false);
@@ -659,7 +665,7 @@ impl vfs::FileSystem for SEFS {
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
             for i in 0..super_block.groups as usize {
-                let slice = &free_map.as_ref()[BLKSIZE * i..BLKSIZE * (i+1)];
+                let slice = &free_map.as_ref()[BLKSIZE * i..BLKSIZE * (i + 1)];
                 self.meta_file
                     .write_all_at(slice, BLKSIZE * Self::get_freemap_block_id_of_group(i))?;
             }
@@ -698,8 +704,7 @@ impl vfs::FileSystem for SEFS {
 impl Drop for SEFS {
     /// Auto sync when drop
     fn drop(&mut self) {
-        self.sync()
-            .expect("Failed to sync when dropping the SEFS");
+        self.sync().expect("Failed to sync when dropping the SEFS");
     }
 }
 
