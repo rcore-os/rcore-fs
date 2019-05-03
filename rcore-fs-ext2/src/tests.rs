@@ -17,5 +17,5 @@ fn open_sample_file() -> Arc<Ext2FileSystem> {
 
 #[test]
 fn test_open() {
-    let fs = open_sample_file();
+    let _ = open_sample_file();
 }
