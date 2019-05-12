@@ -11,8 +11,8 @@ use alloc::{
     string::String,
     sync::{Arc, Weak},
     vec,
-    boxed::Box
     vec::Vec,
+    boxed::Box
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -392,7 +392,8 @@ impl INodeImpl {
             id: child.id as u32,
             name: Str256::from(name),
         };
-        let old_size = self._size();
+        let mut disk_inode = self.disk_inode.write();
+        let old_size = disk_inode.size as usize;
         self._resize(old_size + BLKSIZE)?;
         self._write_at(old_size, entry.as_buf()).unwrap();
         child.nlinks_inc();
@@ -457,7 +458,6 @@ impl vfs::INode for INodeImpl {
                 FileType::BlockDevice => 0,
                 _ => panic!("Unknown file type"),
             },
-            size: disk_inode.size as usize,
             mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
@@ -672,7 +672,19 @@ impl vfs::INode for INodeImpl {
         Ok(String::from(entry.name.as_ref()))
     }
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<()> {
-        Err(FsError::NotSupported)
+        if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
+            return Err(FsError::IOCTLError);
+        }
+        let device_inodes = self.fs.device_inodes.read();
+        let device_inode = device_inodes.get(&self.device_inode_id);
+        match device_inode {
+            Some(x) => { x.io_control(_cmd, _data) }
+            None => {
+                warn!("cannot find corresponding device inode in call_inoctl");
+                Err(FsError::IOCTLError)
+            }
+        }
+
     }
     fn fs(&self) -> Arc<vfs::FileSystem> {
         self.fs.clone()
@@ -681,20 +693,6 @@ impl vfs::INode for INodeImpl {
         self
     }
 
-    fn ioctl(&self, request: u32, data: *mut u8) -> Result<(), vfs::IOCTLError> {
-        if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
-            return Err(vfs::IOCTLError::NotCharDevice);
-        }
-        let device_inodes = self.fs.device_inodes.read();
-        let device_inode = device_inodes.get(&self.device_inode_id);
-        match device_inode {
-            Some(x) => { x.ioctl(request, data) }
-            None => {
-                warn!("cannot find corresponding device inode in call_inoctl");
-                Err(vfs::IOCTLError::NotCharDevice)
-            }
-        }
-    }
 }
 
 impl Drop for INodeImpl {

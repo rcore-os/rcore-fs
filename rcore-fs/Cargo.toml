@@ -10,8 +10,5 @@ spin = "0.5"
 [dev-dependencies]
 tempfile = "3"
 
-[dependencies]
-spin = "0.4"
-
 [features]
 std = []

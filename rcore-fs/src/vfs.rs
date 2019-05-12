@@ -59,7 +59,6 @@ pub trait INode: Any + Sync + Send {
     /// This is used to implement dynamics cast.
     /// Simply return self in the implement of the function.
     fn as_any_ref(&self) -> &Any;
-    fn ioctl(&self, request: u32, data: *mut u8) -> result::Result<(), IOCTLError>;
 }
 
 impl INode {
@@ -253,6 +252,7 @@ pub enum FsError {
     DirNotEmpty,   //E_NOTEMPTY
     WrongFs,       //E_INVAL, when we find the content on disk is wrong when opening the device
     DeviceError,
+    IOCTLError,
     NoDevice
 }
 
