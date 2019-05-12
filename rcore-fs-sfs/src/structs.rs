@@ -205,7 +205,7 @@ pub type INodeId = BlockId;
 pub const NODEVICE: usize = 100;
 
 /// magic number for sfs
-pub const MAGIC: u32 = 0x2f8dbe2a;
+pub const MAGIC: u32 = 0x2f8dbe2b;
 /// size of block
 pub const BLKSIZE: usize = 1usize << BLKSIZE_LOG2;
 /// log2( size of block )
@@ -234,7 +234,7 @@ pub const ENTRY_SIZE: usize = 4;
 /// number of entries in a block
 pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
 /// size of a dirent used in the size field
-pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1;
+pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1 + ENTRY_SIZE;
 /// max number of blocks with direct blocks
 pub const MAX_NBLOCK_DIRECT: usize = NDIRECT;
 /// max number of blocks with indirect blocks

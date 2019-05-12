@@ -77,13 +77,13 @@ impl super::File for Mutex<File> {
     }
 
     fn set_len(&self, len: usize) -> DevResult<()> {
-        let mut file = self.lock();
+        let file = self.lock();
         file.set_len(len as u64)?;
         Ok(())
     }
 
     fn flush(&self) -> DevResult<()> {
-        let mut file = self.lock();
+        let file = self.lock();
         file.sync_all()?;
         Ok(())
     }

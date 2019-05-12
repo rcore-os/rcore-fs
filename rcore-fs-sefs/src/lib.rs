@@ -2,9 +2,6 @@
 #![feature(alloc)]
 
 extern crate alloc;
-#[cfg(feature = "sgx")]
-#[macro_use]
-extern crate sgx_tstd as std;
 
 use alloc::{
     boxed::Box,
@@ -18,10 +15,10 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
+use log::*;
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
-//use log::*;
 use spin::RwLock;
 
 use self::dev::*;
@@ -146,18 +143,27 @@ impl INodeImpl {
 
 impl vfs::INode for INodeImpl {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_ != FileType::File {
+        let type_ = self.disk_inode.read().type_;
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         let len = self.file.read_at(buf, offset)?;
         Ok(len)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        if self.disk_inode.read().type_ != FileType::File {
+        let type_ = self.disk_inode.read().type_;
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         let len = self.file.write_at(buf, offset)?;
         Ok(len)
+    }
+    fn poll(&self) -> vfs::Result<vfs::PollStatus> {
+        Ok(vfs::PollStatus {
+            read: true,
+            write: true,
+            error: false,
+        })
     }
     /// the size returned here is logical size(entry num for directory), not the disk space used.
     fn metadata(&self) -> vfs::Result<vfs::Metadata> {
@@ -166,7 +172,7 @@ impl vfs::INode for INodeImpl {
             dev: 0,
             inode: self.id,
             size: match disk_inode.type_ {
-                FileType::File => disk_inode.size as usize,
+                FileType::File | FileType::SymLink => disk_inode.size as usize,
                 FileType::Dir => disk_inode.blocks as usize,
                 _ => panic!("Unknown file type"),
             },
@@ -191,13 +197,16 @@ impl vfs::INode for INodeImpl {
             blk_size: 0x1000,
         })
     }
-
-    fn chmod(&self, mode: u16) -> vfs::Result<()> {
+    fn set_metadata(&self, metadata: &vfs::Metadata) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
-        disk_inode.mode = mode;
+        disk_inode.mode = metadata.mode;
+        disk_inode.uid = metadata.uid as u16;
+        disk_inode.gid = metadata.gid as u8;
+        disk_inode.atime = metadata.atime.sec as u32;
+        disk_inode.mtime = metadata.mtime.sec as u32;
+        disk_inode.ctime = metadata.ctime.sec as u32;
         Ok(())
     }
-
     fn sync_all(&self) -> vfs::Result<()> {
         let mut disk_inode = self.disk_inode.write();
         if disk_inode.dirty() {
@@ -206,13 +215,16 @@ impl vfs::INode for INodeImpl {
                 .write_block(self.id, disk_inode.as_buf())?;
             disk_inode.sync();
         }
+        self.sync_data()?;
         Ok(())
     }
     fn sync_data(&self) -> vfs::Result<()> {
-        self.sync_all()
+        self.file.flush()?;
+        Ok(())
     }
     fn resize(&self, len: usize) -> vfs::Result<()> {
-        if self.disk_inode.read().type_ != FileType::File {
+        let type_ = self.disk_inode.read().type_;
+        if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
         }
         self.file.set_len(len)?;
@@ -223,6 +235,7 @@ impl vfs::INode for INodeImpl {
         let type_ = match type_ {
             vfs::FileType::File => FileType::File,
             vfs::FileType::Dir => FileType::Dir,
+            vfs::FileType::SymLink => FileType::SymLink,
             _ => return Err(vfs::FsError::InvalidParam),
         };
         let info = self.metadata()?;
@@ -402,6 +415,9 @@ impl vfs::INode for INodeImpl {
         let entry = self.file.read_direntry(id)?;
         Ok(String::from(entry.name.as_ref()))
     }
+    fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<()> {
+        Err(FsError::NotSupported)
+    }
     fn fs(&self) -> Arc<vfs::FileSystem> {
         self.fs.clone()
     }
@@ -423,7 +439,7 @@ impl Drop for INodeImpl {
     }
 }
 
-/// Simple Encrypt File System
+/// Simple Encrypted File System
 pub struct SEFS {
     /// on-disk superblock
     super_block: RwLock<Dirty<SuperBlock>>,
@@ -452,11 +468,23 @@ impl SEFS {
         if !super_block.check() {
             return Err(FsError::WrongFs);
         }
-        let free_map = meta_file.load_struct::<[u8; BLKSIZE]>(BLKN_FREEMAP)?;
+
+        // load free map
+        let mut free_map = BitVec::with_capacity(BLKBITS * super_block.groups as usize);
+        unsafe {
+            free_map.set_len(BLKBITS * super_block.groups as usize);
+        }
+        for i in 0..super_block.groups as usize {
+            let block_id = Self::get_freemap_block_id_of_group(i);
+            meta_file.read_block(
+                block_id,
+                &mut free_map.as_mut()[BLKSIZE * i..BLKSIZE * (i + 1)],
+            )?;
+        }
 
         Ok(SEFS {
             super_block: RwLock::new(Dirty::new(super_block)),
-            free_map: RwLock::new(Dirty::new(BitVec::from(free_map.as_ref()))),
+            free_map: RwLock::new(Dirty::new(free_map)),
             inodes: RwLock::new(BTreeMap::new()),
             device,
             meta_file,
@@ -476,6 +504,7 @@ impl SEFS {
             magic: MAGIC,
             blocks: blocks as u32,
             unused_blocks: blocks as u32 - 2,
+            groups: 1,
         };
         let free_map = {
             let mut bitset = BitVec::with_capacity(BLKBITS);
@@ -526,15 +555,23 @@ impl SEFS {
     /// Allocate a block, return block id
     fn alloc_block(&self) -> Option<usize> {
         let mut free_map = self.free_map.write();
-        let id = free_map.alloc();
-        if let Some(block_id) = id {
-            let mut super_block = self.super_block.write();
-            if super_block.unused_blocks == 0 {
-                free_map.set(block_id, true);
-                return None;
-            }
-            super_block.unused_blocks -= 1; // will not underflow
-        }
+        let mut super_block = self.super_block.write();
+        let id = free_map.alloc().or_else(|| {
+            // allocate a new group
+            let new_group_id = super_block.groups as usize;
+            super_block.groups += 1;
+            super_block.blocks += BLKBITS as u32;
+            super_block.unused_blocks += BLKBITS as u32 - 1;
+            self.meta_file
+                .set_len(super_block.groups as usize * BLKBITS * BLKSIZE)
+                .expect("failed to extend meta file");
+            free_map.extend(core::iter::repeat(true).take(BLKBITS));
+            free_map.set(Self::get_freemap_block_id_of_group(new_group_id), false);
+            // allocate block again
+            free_map.alloc()
+        });
+        assert!(id.is_some(), "allocate block should always success");
+        super_block.unused_blocks -= 1;
         id
     }
     /// Free a block
@@ -609,29 +646,39 @@ impl SEFS {
             inodes.remove(&id);
         }
     }
+    fn get_freemap_block_id_of_group(group_id: usize) -> usize {
+        BLKBITS * group_id + BLKN_FREEMAP
+    }
 }
 
 impl vfs::FileSystem for SEFS {
     /// Write back super block if dirty
     fn sync(&self) -> vfs::Result<()> {
+        // sync super_block
         let mut super_block = self.super_block.write();
         if super_block.dirty() {
             self.meta_file
                 .write_all_at(super_block.as_buf(), BLKSIZE * BLKN_SUPER)?;
             super_block.sync();
         }
+        // sync free_map
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
-            self.meta_file
-                .write_all_at(free_map.as_buf(), BLKSIZE * BLKN_FREEMAP)?;
+            for i in 0..super_block.groups as usize {
+                let slice = &free_map.as_ref()[BLKSIZE * i..BLKSIZE * (i + 1)];
+                self.meta_file
+                    .write_all_at(slice, BLKSIZE * Self::get_freemap_block_id_of_group(i))?;
+            }
             free_map.sync();
         }
+        // sync all INodes
         self.flush_weak_inodes();
         for inode in self.inodes.read().values() {
             if let Some(inode) = inode.upgrade() {
                 inode.sync_all()?;
             }
         }
+        self.meta_file.flush()?;
         Ok(())
     }
 
@@ -657,8 +704,7 @@ impl vfs::FileSystem for SEFS {
 impl Drop for SEFS {
     /// Auto sync when drop
     fn drop(&mut self) {
-        self.sync()
-            .expect("Failed to sync when dropping the SimpleFileSystem");
+        self.sync().expect("Failed to sync when dropping the SEFS");
     }
 }
 
@@ -693,6 +739,7 @@ impl From<FileType> for vfs::FileType {
         match t {
             FileType::File => vfs::FileType::File,
             FileType::Dir => vfs::FileType::Dir,
+            FileType::SymLink => vfs::FileType::SymLink,
             _ => panic!("unknown file type"),
         }
     }

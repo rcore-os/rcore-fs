@@ -6,10 +6,13 @@ use structopt::StructOpt;
 
 use rcore_fs::dev::std_impl::StdTimeProvider;
 use rcore_fs::vfs::FileSystem;
+#[cfg(feature = "use_fuse")]
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
 use rcore_fs_sefs as sefs;
 use rcore_fs_sfs as sfs;
+
+use git_version::git_version;
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -41,8 +44,12 @@ enum Cmd {
     Unzip,
 
     /// Mount <image> to <dir>
+    #[cfg(feature = "use_fuse")]
     #[structopt(name = "mount")]
     Mount,
+
+    #[structopt(name = "git-version")]
+    GitVersion,
 }
 
 fn main() {
@@ -51,9 +58,14 @@ fn main() {
 
     // open or create
     let create = match opt.cmd {
+        #[cfg(feature = "use_fuse")]
         Cmd::Mount => !opt.image.is_dir() && !opt.image.is_file(),
         Cmd::Zip => true,
         Cmd::Unzip => false,
+        Cmd::GitVersion => {
+            println!("{}", git_version!());
+            return;
+        }
     };
 
     let fs: Arc<FileSystem> = match opt.fs.as_str() {
@@ -67,7 +79,8 @@ fn main() {
             let device = Mutex::new(file);
             const MAX_SPACE: usize = 0x1000 * 0x1000 * 1024; // 1G
             match create {
-                true => sfs::SimpleFileSystem::create(Arc::new(device), MAX_SPACE),
+                true => sfs::SimpleFileSystem::create(Arc::new(device), MAX_SPACE)
+                    .expect("failed to create sfs"),
                 false => sfs::SimpleFileSystem::open(Arc::new(device)).expect("failed to open sfs"),
             }
         }
@@ -84,6 +97,7 @@ fn main() {
         _ => panic!("unsupported file system"),
     };
     match opt.cmd {
+        #[cfg(feature = "use_fuse")]
         Cmd::Mount => {
             fuse::mount(VfsFuse::new(fs), &opt.dir, &[]).expect("failed to mount fs");
         }
@@ -94,5 +108,6 @@ fn main() {
             std::fs::create_dir(&opt.dir).expect("failed to create dir");
             unzip_dir(&opt.dir, fs.root_inode()).expect("failed to unzip fs");
         }
+        Cmd::GitVersion => unreachable!(),
     }
 }

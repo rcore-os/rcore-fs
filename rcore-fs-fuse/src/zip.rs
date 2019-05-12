@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::mem::uninitialized;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::str;
 use std::sync::Arc;
 
 use rcore_fs::vfs::{FileType, INode};
@@ -66,6 +67,11 @@ pub fn unzip_dir(path: &Path, inode: Arc<INode>) -> Result<(), Box<Error>> {
             FileType::Dir => {
                 fs::create_dir(&path)?;
                 unzip_dir(path.as_path(), inode)?;
+            }
+            FileType::SymLink => {
+                let mut buf: [u8; BUF_SIZE] = unsafe { uninitialized() };
+                let len = inode.read_at(0, buf.as_mut())?;
+                std::os::unix::fs::symlink(str::from_utf8(&buf[..len]).unwrap(), path)?;
             }
             _ => panic!("unsupported file type"),
         }

@@ -20,6 +20,7 @@ fn _open_sample_file() -> Arc<SimpleFileSystem> {
 fn _create_new_sfs() -> Arc<SimpleFileSystem> {
     let file = tempfile::tempfile().expect("failed to create file");
     SimpleFileSystem::create(Arc::new(Mutex::new(file)), 32 * 4096 * 4096)
+        .expect("failed to create SFS")
 }
 
 #[test]
@@ -43,7 +44,7 @@ fn create_file() -> Result<()> {
     assert_eq!(
         file1.metadata()?,
         Metadata {
-            inode: 8,
+            inode: 7,
             size: 0,
             type_: FileType::File,
             mode: 0o777,
@@ -165,11 +166,26 @@ fn create_then_lookup() -> Result<()> {
         "failed to find dir1/file2 by weird relative"
     );
 
-    assert!(root.lookup("./dir1/../file2").is_err(), "found non-existent file");
-    assert!(root.lookup("./dir1/../file3").is_err(), "found non-existent file");
-    assert!(root.lookup("/dir1/../dir1/../file3").is_err(), "found non-existent file");
-    assert!(root.lookup("/dir1/../../../dir1/../file3").is_err(), "found non-existent file");
-    assert!(root.lookup("/").unwrap().lookup("dir1/../file2").is_err(), "found non-existent file");
+    assert!(
+        root.lookup("./dir1/../file2").is_err(),
+        "found non-existent file"
+    );
+    assert!(
+        root.lookup("./dir1/../file3").is_err(),
+        "found non-existent file"
+    );
+    assert!(
+        root.lookup("/dir1/../dir1/../file3").is_err(),
+        "found non-existent file"
+    );
+    assert!(
+        root.lookup("/dir1/../../../dir1/../file3").is_err(),
+        "found non-existent file"
+    );
+    assert!(
+        root.lookup("/").unwrap().lookup("dir1/../file2").is_err(),
+        "found non-existent file"
+    );
 
     sfs.sync()?;
     Ok(())

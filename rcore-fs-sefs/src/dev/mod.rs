@@ -5,7 +5,6 @@ use rcore_fs::vfs::FsError;
 #[cfg(any(test, feature = "std"))]
 pub use self::std_impl::*;
 
-pub mod sgx_impl;
 pub mod std_impl;
 
 /// A file stores a normal file or directory.
