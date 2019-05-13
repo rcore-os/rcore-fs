@@ -7,12 +7,12 @@ extern crate alloc;
 extern crate log;
 
 use alloc::{
+    boxed::Box,
     collections::BTreeMap,
     string::String,
     sync::{Arc, Weak},
     vec,
     vec::Vec,
-    boxed::Box
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -65,7 +65,9 @@ pub struct INodeImpl {
     disk_inode: RwLock<Dirty<DiskINode>>,
     /// Reference to SFS, used by almost all operations
     fs: Arc<SimpleFileSystem>,
-    device_inode_id: usize
+    /// Char/block device id (major, minor)
+    /// e.g. crw-rw-rw- 1 root wheel 3, 2 May 13 16:40 /dev/null
+    device_inode_id: usize, 
 }
 
 impl Debug for INodeImpl {
@@ -411,10 +413,10 @@ impl vfs::INode for INodeImpl {
                 let device_inode = device_inodes.get(&self.device_inode_id);
                 match device_inode {
                     Some(device) => device.read_at(offset, buf),
-                    None => Err(FsError::DeviceError)
+                    None => Err(FsError::DeviceError),
                 }
-            },
-            _ => Err(FsError::NotFile)
+            }
+            _ => Err(FsError::NotFile),
         }
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
@@ -426,16 +428,16 @@ impl vfs::INode for INodeImpl {
                     self._resize(end_offset)?;
                 }
                 self._write_at(offset, buf)
-            },
+            }
             FileType::CharDevice => {
                 let device_inodes = self.fs.device_inodes.write();
                 let device_inode = device_inodes.get(&self.device_inode_id);
                 match device_inode {
                     Some(device) => device.write_at(offset, buf),
-                    None => Err(FsError::DeviceError)
+                    None => Err(FsError::DeviceError),
                 }
-            },
-            _ => Err(FsError::NotFile)
+            }
+            _ => Err(FsError::NotFile),
         }
     }
     fn poll(&self) -> vfs::Result<vfs::PollStatus> {
@@ -678,13 +680,12 @@ impl vfs::INode for INodeImpl {
         let device_inodes = self.fs.device_inodes.read();
         let device_inode = device_inodes.get(&self.device_inode_id);
         match device_inode {
-            Some(x) => { x.io_control(_cmd, _data) }
+            Some(x) => x.io_control(_cmd, _data),
             None => {
                 warn!("cannot find corresponding device inode in call_inoctl");
                 Err(FsError::IOCTLError)
             }
         }
-
     }
     fn fs(&self) -> Arc<vfs::FileSystem> {
         self.fs.clone()
@@ -692,7 +693,6 @@ impl vfs::INode for INodeImpl {
     fn as_any_ref(&self) -> &Any {
         self
     }
-
 }
 
 impl Drop for INodeImpl {
@@ -726,7 +726,7 @@ pub struct SimpleFileSystem {
     /// Pointer to self, used by INodes
     self_ptr: Weak<SimpleFileSystem>,
     /// device inode
-    device_inodes: RwLock<BTreeMap<usize, Arc<DeviceINode>>>
+    device_inodes: RwLock<BTreeMap<usize, Arc<DeviceINode>>>,
 }
 
 impl SimpleFileSystem {
@@ -751,7 +751,7 @@ impl SimpleFileSystem {
             inodes: RwLock::new(BTreeMap::new()),
             device,
             self_ptr: Weak::default(),
-            device_inodes: RwLock::new(BTreeMap::new())
+            device_inodes: RwLock::new(BTreeMap::new()),
         }
         .wrap())
     }
@@ -783,7 +783,7 @@ impl SimpleFileSystem {
             inodes: RwLock::new(BTreeMap::new()),
             device,
             self_ptr: Weak::default(),
-            device_inodes: RwLock::new(BTreeMap::new())
+            device_inodes: RwLock::new(BTreeMap::new()),
         }
         .wrap();
 
@@ -838,7 +838,9 @@ impl SimpleFileSystem {
     }
 
     pub fn new_device_inode(&self, device_inode_id: usize, device_inode: Arc<DeviceINode>) {
-        self.device_inodes.write().insert(device_inode_id, device_inode);
+        self.device_inodes
+            .write()
+            .insert(device_inode_id, device_inode);
     }
 
     /// Create a new INode struct, then insert it to self.inodes
@@ -849,7 +851,7 @@ impl SimpleFileSystem {
             id,
             disk_inode: RwLock::new(disk_inode),
             fs: self.self_ptr.upgrade().unwrap(),
-            device_inode_id: device_inode_id
+            device_inode_id: device_inode_id,
         });
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode

@@ -138,14 +138,13 @@ impl INode {
         }
         Ok(result)
     }
-
 }
 
 pub enum IOCTLError {
-    NotValidFD = 9, // EBADF
+    NotValidFD = 9,      // EBADF
     NotValidMemory = 14, // EFAULT
-    NotValidParam = 22, // EINVAL
-    NotCharDevice = 25, // ENOTTY
+    NotValidParam = 22,  // EINVAL
+    NotCharDevice = 25,  // ENOTTY
 }
 
 #[derive(Debug, Default)]
@@ -253,7 +252,7 @@ pub enum FsError {
     WrongFs,       //E_INVAL, when we find the content on disk is wrong when opening the device
     DeviceError,
     IOCTLError,
-    NoDevice
+    NoDevice,
 }
 
 impl fmt::Display for FsError {

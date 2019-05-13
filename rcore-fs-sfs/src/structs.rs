@@ -1,12 +1,12 @@
 //! On-disk structures in SFS
 
+use crate::vfs;
 use alloc::str;
+use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::{size_of, size_of_val};
 use core::slice;
-use core::any::Any;
 use static_assertions::const_assert;
-use crate::vfs;
 
 /// On-disk superblock
 #[repr(C)]
@@ -44,8 +44,8 @@ pub struct DiskINode {
     pub indirect: u32,
     /// double indirect blocks
     pub db_indirect: u32,
-    /// device inode id
-    pub device_inode_id: usize
+    /// device inode id for char/block device (major, minor)
+    pub device_inode_id: usize,
 }
 
 /*
@@ -136,7 +136,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
-            device_inode_id: NODEVICE
+            device_inode_id: NODEVICE,
         }
     }
     pub const fn new_symlink() -> Self {
@@ -148,7 +148,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
-            device_inode_id: NODEVICE
+            device_inode_id: NODEVICE,
         }
     }
     pub const fn new_dir() -> Self {
@@ -160,7 +160,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
-            device_inode_id: NODEVICE
+            device_inode_id: NODEVICE,
         }
     }
     pub const fn new_chardevice(device_inode_id: usize) -> Self {
@@ -172,7 +172,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
-            device_inode_id: device_inode_id
+            device_inode_id: device_inode_id,
         }
     }
 }
