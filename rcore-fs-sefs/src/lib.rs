@@ -195,6 +195,7 @@ impl vfs::INode for INodeImpl {
             uid: disk_inode.uid as usize,
             gid: disk_inode.gid as usize,
             blk_size: 0x1000,
+            rdev: 0,
         })
     }
     fn set_metadata(&self, metadata: &vfs::Metadata) -> vfs::Result<()> {

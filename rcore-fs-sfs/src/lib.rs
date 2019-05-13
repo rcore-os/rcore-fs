@@ -67,7 +67,7 @@ pub struct INodeImpl {
     fs: Arc<SimpleFileSystem>,
     /// Char/block device id (major, minor)
     /// e.g. crw-rw-rw- 1 root wheel 3, 2 May 13 16:40 /dev/null
-    device_inode_id: usize, 
+    device_inode_id: usize,
 }
 
 impl Debug for INodeImpl {
@@ -470,6 +470,7 @@ impl vfs::INode for INodeImpl {
             uid: 0,
             gid: 0,
             blk_size: BLKSIZE,
+            rdev: self.device_inode_id,
         })
     }
     fn set_metadata(&self, _metadata: &vfs::Metadata) -> vfs::Result<()> {

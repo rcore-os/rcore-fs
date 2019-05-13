@@ -160,7 +160,7 @@ pub struct PollStatus {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Metadata {
     /// Device ID
-    pub dev: usize,
+    pub dev: usize, // (major << 8) | minor
     /// Inode number
     pub inode: usize,
     /// Size in bytes
@@ -192,6 +192,9 @@ pub struct Metadata {
     pub uid: usize,
     /// Group ID
     pub gid: usize,
+    /// Raw device id
+    /// e.g. /dev/null: makedev(0x1, 0x3)
+    pub rdev: usize, // (major << 8) | minor
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]

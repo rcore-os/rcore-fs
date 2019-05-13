@@ -57,6 +57,7 @@ fn create_file() -> Result<()> {
             gid: 0,
             blk_size: 4096,
             dev: 0,
+            rdev: 100, // dummo why 100 here, maybe legacy data?
         }
     );
 
