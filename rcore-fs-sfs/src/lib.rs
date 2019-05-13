@@ -453,7 +453,7 @@ impl vfs::INode for INodeImpl {
             inode: self.id,
             size: match disk_inode.type_ {
                 FileType::File | FileType::SymLink => disk_inode.size as usize,
-                FileType::Dir => disk_inode.blocks as usize,
+                FileType::Dir => disk_inode.size as usize,
                 FileType::CharDevice => 0,
                 FileType::BlockDevice => 0,
                 _ => panic!("Unknown file type"),
