@@ -74,6 +74,7 @@ fn main() {
                 .read(true)
                 .write(true)
                 .create(true)
+                .truncate(true)
                 .open(&opt.image)
                 .expect("failed to open image");
             let device = Mutex::new(file);
