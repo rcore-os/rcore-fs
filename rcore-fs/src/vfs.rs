@@ -256,6 +256,7 @@ pub enum FsError {
     DeviceError,
     IOCTLError,
     NoDevice,
+    Again, // E_AGAIN, when no data is available, never happens in fs
 }
 
 impl fmt::Display for FsError {
