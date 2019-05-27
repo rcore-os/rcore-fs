@@ -6,8 +6,8 @@ build = "build.rs"
 edition = "2018"
 
 [dependencies]
-sgx_types = "1.0.6"
-sgx_urts = "1.0.6"
+sgx_types = "=1.0.6"
+sgx_urts = "=1.0.6"
 dirs = "1.0.2"
 fuse = "0.3"
 structopt = "0.2"
