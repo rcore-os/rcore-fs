@@ -257,6 +257,7 @@ pub enum FsError {
     IOCTLError,
     NoDevice,
     Again, // E_AGAIN, when no data is available, never happens in fs
+    SymLoop, //E_LOOP
 }
 
 impl fmt::Display for FsError {
@@ -277,7 +278,7 @@ impl std::error::Error for FsError {}
 pub type Result<T> = result::Result<T, FsError>;
 
 /// Abstract file system
-pub trait FileSystem: Sync {
+pub trait FileSystem: Sync+Send {
     /// Sync all data to the storage
     fn sync(&self) -> Result<()>;
 
