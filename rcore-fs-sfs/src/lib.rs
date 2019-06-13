@@ -498,7 +498,7 @@ impl vfs::INode for INodeImpl {
         }
         self._resize(len)
     }
-    fn create(&self, name: &str, type_: vfs::FileType, _mode: u32) -> vfs::Result<Arc<vfs::INode>> {
+    fn create2(&self, name: &str, type_: vfs::FileType, _mode: u32, data: usize)->vfs::Result<Arc<vfs::INode>>{
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -517,6 +517,7 @@ impl vfs::INode for INodeImpl {
             vfs::FileType::File => self.fs.new_inode_file()?,
             vfs::FileType::SymLink => self.fs.new_inode_symlink()?,
             vfs::FileType::Dir => self.fs.new_inode_dir(self.id)?,
+            vfs::FileType::CharDevice => self.fs.new_inode_chardevice(data)?,
             _ => return Err(vfs::FsError::InvalidParam),
         };
 
@@ -533,6 +534,7 @@ impl vfs::INode for INodeImpl {
 
         Ok(inode)
     }
+
     fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
