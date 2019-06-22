@@ -113,8 +113,6 @@ pub const MAGIC: u32 = 0x2f8dbe2a;
 pub const BLKSIZE: usize = 1usize << BLKSIZE_LOG2;
 /// log2( size of block )
 pub const BLKSIZE_LOG2: u8 = 7;
-/// max length of information
-pub const MAX_INFO_LEN: usize = 31;
 /// max length of filename
 pub const MAX_FNAME_LEN: usize = 255;
 /// block the superblock lives in
@@ -125,10 +123,6 @@ pub const BLKN_ROOT: BlockId = 2;
 pub const BLKN_FREEMAP: BlockId = 1;
 /// number of bits in a block
 pub const BLKBITS: usize = BLKSIZE * 8;
-/// size of one entry
-pub const ENTRY_SIZE: usize = 4;
-/// number of entries in a block
-pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
 /// size of a dirent used in the size field
 pub const DIRENT_SIZE: usize = 260;
 

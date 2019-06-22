@@ -1,6 +1,8 @@
 //! On-disk structures in SFS
 
+use crate::vfs;
 use alloc::str;
+use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::{size_of, size_of_val};
 use core::slice;
@@ -42,7 +44,18 @@ pub struct DiskINode {
     pub indirect: u32,
     /// double indirect blocks
     pub db_indirect: u32,
+    /// device inode id for char/block device (major, minor)
+    pub device_inode_id: usize,
 }
+
+/*
+pub trait DeviceINode : Any + Sync + Send{
+    fn read_at(&self, _offset: usize, buf: &mut [u8]) -> vfs::Result<usize>;
+    fn write_at(&self, _offset: usize, buf: &[u8]) -> vfs::Result<usize>;
+}
+*/
+
+pub type DeviceINode = vfs::INode;
 
 #[repr(C)]
 pub struct IndirectBlock {
@@ -123,6 +136,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: NODEVICE,
         }
     }
     pub const fn new_symlink() -> Self {
@@ -134,6 +148,7 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: NODEVICE,
         }
     }
     pub const fn new_dir() -> Self {
@@ -145,6 +160,19 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
+            device_inode_id: NODEVICE,
+        }
+    }
+    pub const fn new_chardevice(device_inode_id: usize) -> Self {
+        DiskINode {
+            size: 0,
+            type_: FileType::CharDevice,
+            nlinks: 0,
+            blocks: 0,
+            direct: [0; NDIRECT],
+            indirect: 0,
+            db_indirect: 0,
+            device_inode_id: device_inode_id,
         }
     }
 }
@@ -174,8 +202,10 @@ impl AsBuf for u32 {}
 pub type BlockId = usize;
 pub type INodeId = BlockId;
 
+pub const NODEVICE: usize = 100;
+
 /// magic number for sfs
-pub const MAGIC: u32 = 0x2f8dbe2a;
+pub const MAGIC: u32 = 0x2f8dbe2b;
 /// size of block
 pub const BLKSIZE: usize = 1usize << BLKSIZE_LOG2;
 /// log2( size of block )
@@ -204,7 +234,7 @@ pub const ENTRY_SIZE: usize = 4;
 /// number of entries in a block
 pub const BLK_NENTRY: usize = BLKSIZE / ENTRY_SIZE;
 /// size of a dirent used in the size field
-pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1;
+pub const DIRENT_SIZE: usize = MAX_FNAME_LEN + 1 + ENTRY_SIZE;
 /// max number of blocks with direct blocks
 pub const MAX_NBLOCK_DIRECT: usize = NDIRECT;
 /// max number of blocks with indirect blocks
@@ -220,6 +250,8 @@ pub enum FileType {
     File = 1,
     Dir = 2,
     SymLink = 3,
+    CharDevice = 4,
+    BlockDevice = 5,
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);

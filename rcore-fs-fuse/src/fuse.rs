@@ -47,7 +47,7 @@ impl VfsFuse {
             perm: info.mode,
             nlink: info.nlinks as u32,
             uid: 501, // info.uid as u32,
-            gid: 20, // info.gid as u32,
+            gid: 20,  // info.gid as u32,
             rdev: 0,
             flags: 0,
         }
@@ -294,10 +294,12 @@ impl Filesystem for VfsFuse {
         mut reply: ReplyDirectory,
     ) {
         let inode = try_vfs!(reply, self.get_inode(ino));
-        let info = try_vfs!(reply, inode.metadata());
-        let count = info.size;
-        for i in offset as usize..count {
-            let name = inode.get_entry(i).unwrap();
+        for i in offset as usize.. {
+            let name = match inode.get_entry(i) {
+                Ok(name) => name,
+                Err(vfs::FsError::EntryNotFound) => break,
+                e @ _ => try_vfs!(reply, e),
+            };
             let inode = try_vfs!(reply, inode.find(name.as_str()));
             let info = try_vfs!(reply, inode.metadata());
             let kind = Self::trans_type(info.type_);

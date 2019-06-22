@@ -1,3 +1,4 @@
+use crate::dev::DevError;
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::any::Any;
 use core::fmt;
@@ -31,7 +32,14 @@ pub trait INode: Any + Sync + Send {
     fn resize(&self, len: usize) -> Result<()>;
 
     /// Create a new INode in the directory
-    fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>;
+    fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>{
+        self.create2(name, type_, mode, 0)
+    }
+
+    /// Create a new INode in the directory, with a data field for usages like device file.
+    fn create2(&self, name: &str, type_: FileType, mode: u32, data: usize) -> Result<Arc<INode>>{
+        self.create(name, type_, mode)
+    }
 
     /// Create a hard link `name` to `other`
     fn link(&self, name: &str, other: &Arc<INode>) -> Result<()>;
@@ -50,7 +58,7 @@ pub trait INode: Any + Sync + Send {
     fn get_entry(&self, id: usize) -> Result<String>;
 
     /// Control device
-    fn io_control(&self, cmd: u32, data: u32) -> Result<()>;
+    fn io_control(&self, cmd: u32, data: usize) -> Result<()>;
 
     /// Get the file system of the INode
     fn fs(&self) -> Arc<FileSystem>;
@@ -72,7 +80,11 @@ impl INode {
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
-        (0..info.size).map(|i| self.get_entry(i)).collect()
+        Ok((0..)
+            .map(|i| self.get_entry(i))
+            .take_while(|result| result.is_ok())
+            .filter_map(|result| result.ok())
+            .collect())
     }
 
     /// Lookup path from current INode, and do not follow symlinks
@@ -115,8 +127,7 @@ impl INode {
                 follow_times -= 1;
                 let mut content = [0u8; 256];
                 let len = inode.read_at(0, &mut content)?;
-                let path = str::from_utf8(&content[..len])
-                    .map_err(|_| FsError::NotDir)?;
+                let path = str::from_utf8(&content[..len]).map_err(|_| FsError::NotDir)?;
                 // result remains unchanged
                 rest_path = {
                     let mut new_path = String::from(path);
@@ -136,6 +147,13 @@ impl INode {
     }
 }
 
+pub enum IOCTLError {
+    NotValidFD = 9,      // EBADF
+    NotValidMemory = 14, // EFAULT
+    NotValidParam = 22,  // EINVAL
+    NotCharDevice = 25,  // ENOTTY
+}
+
 #[derive(Debug, Default)]
 pub struct PollStatus {
     pub read: bool,
@@ -149,7 +167,7 @@ pub struct PollStatus {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Metadata {
     /// Device ID
-    pub dev: usize,
+    pub dev: usize, // (major << 8) | minor
     /// Inode number
     pub inode: usize,
     /// Size in bytes
@@ -181,6 +199,9 @@ pub struct Metadata {
     pub uid: usize,
     /// Group ID
     pub gid: usize,
+    /// Raw device id
+    /// e.g. /dev/null: makedev(0x1, 0x3)
+    pub rdev: usize, // (major << 8) | minor
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -189,7 +210,7 @@ pub struct Timespec {
     pub nsec: i32,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
     File,
     Dir,
@@ -240,11 +261,21 @@ pub enum FsError {
     DirNotEmpty,   //E_NOTEMPTY
     WrongFs,       //E_INVAL, when we find the content on disk is wrong when opening the device
     DeviceError,
+    IOCTLError,
+    NoDevice,
+    Again, // E_AGAIN, when no data is available, never happens in fs
+    SymLoop, //E_LOOP
 }
 
 impl fmt::Display for FsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+impl From<DevError> for FsError {
+    fn from(_: DevError) -> Self {
+        FsError::DeviceError
     }
 }
 
@@ -254,7 +285,7 @@ impl std::error::Error for FsError {}
 pub type Result<T> = result::Result<T, FsError>;
 
 /// Abstract file system
-pub trait FileSystem: Sync {
+pub trait FileSystem: Sync+Send {
     /// Sync all data to the storage
     fn sync(&self) -> Result<()>;
 
