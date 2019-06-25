@@ -29,132 +29,76 @@
 #![crate_name = "helloworldsampleenclave"]
 #![crate_type = "staticlib"]
 
-#![cfg_attr(not(target_env = "sgx"), no_std)]
-#![cfg_attr(target_env = "sgx", feature(rustc_private))]
+#![no_std]
+#![feature(lang_items)]
 
-#[macro_use]
-extern crate lazy_static;
 #[macro_use]
 extern crate log;
-#[cfg(not(target_env = "sgx"))]
-#[macro_use]
-extern crate sgx_tstd as std;
+//#[macro_use]
+//extern crate sgx_tstd;
 
-use std::collections::BTreeMap;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
-use std::sgxfs::{OpenOptions, SgxFile};
-use std::sync::{SgxMutex as Mutex, SgxRwLock as RwLock};
-use sgx_types::sgx_key_128bit_t;
+use self::sgxfs::*;
 
-#[no_mangle]
-pub extern "C" fn ecall_set_sefs_dir(path: *const u8, len: usize) -> i32 {
-    unsafe {
-        assert!(PATH.is_none());
-        let path = std::slice::from_raw_parts(path, len);
-        let path = std::str::from_utf8(path).unwrap();
-        let path = PathBuf::from(path);
-        PATH = Some(path);
-        0
-    }
-}
+mod sgxfs;
+mod lang;
 
 /// Helper macro to reply error when IO fails
 macro_rules! try_io {
     ($expr:expr) => (match $expr {
-        Ok(val) => val,
-        Err(err) => {
-            error!("{:?}", err);
-            return err.raw_os_error().unwrap();
+        errno if (errno as i32) == -1 => {
+            return errno as i32;
         }
+        val => val,
     });
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_open(fd: usize, create: bool, key: &sgx_key_128bit_t) -> i32 {
-    let path = get_path(fd);
-    let mut oo = OpenOptions::new();
-    match create {
-        true => oo.write(true).update(true).binary(true),
-        false => oo.read(true).update(true).binary(true),
+pub unsafe extern "C" fn ecall_file_open(path: *const u8, create: bool, key: &SGX_KEY) -> *mut u8 {
+    let mode = match create {
+        true => "w+b\0",
+        false => "r+b\0",
     };
-    let file = try_io!(oo.open_ex(&path, key));
-    debug!("{} fd = {} key = {:?}", if create {"create"} else {"open"}, fd, key);
-    let file = LockedFile(Mutex::new(file));
-    let mut files = FILES.write().unwrap();
-    files.insert(fd, file);
-    0
+    let file = sgx_fopen(path, mode.as_ptr(), key);
+    file
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_close(fd: usize) -> i32 {
-    let mut files = FILES.write().unwrap();
-    files.remove(&fd);
-    debug!("close fd = {}", fd);
-    0
+pub unsafe extern "C" fn ecall_file_close(file: SGX_FILE) -> i32 {
+    sgx_fclose(file)
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_flush(fd: usize) -> i32 {
-    let files = FILES.read().unwrap();
-    let mut file = files[&fd].0.lock().unwrap();
-    debug!("flush fd = {}", fd);
-    try_io!(file.flush());
-    0
+pub unsafe extern "C" fn ecall_file_flush(file: SGX_FILE) -> i32 {
+    sgx_fflush(file)
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_read_at(fd: usize, offset: usize, buf: *mut u8, len: usize) -> i32 {
-    let files = FILES.read().unwrap();
-    let mut file = files[&fd].0.lock().unwrap();
-
-    let offset = offset as u64;
-    debug!("read_at fd = {}, offset = {}, len = {}", fd, offset, len);
-    try_io!(file.seek(SeekFrom::Start(offset)));
-
-    let buf = unsafe { std::slice::from_raw_parts_mut(buf, len) };
-    let len = try_io!(file.read(buf)) as i32;
-    trace!("{:?}", buf);
-
-    len
+pub unsafe extern "C" fn ecall_file_read_at(file: SGX_FILE, offset: usize, buf: *mut u8, len: usize) -> i32 {
+    try_io!(sgx_fseek(file, offset as i64, SEEK_SET));
+    sgx_fread(buf, 1, len, file) as i32
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_write_at(fd: usize, offset: usize, buf: *const u8, len: usize) -> i32 {
-    let files = FILES.read().unwrap();
-    let mut file = files[&fd].0.lock().unwrap();
-
-    let offset = offset as u64;
-    debug!("write_at fd = {}, offset = {}, len = {}", fd, offset, len);
-    try_io!(file.seek(SeekFrom::Start(offset)));
-    let buf = unsafe { std::slice::from_raw_parts(buf, len) };
-    let ret = try_io!(file.write(buf)) as i32;
-    trace!("{:?}", buf);
-
-    ret
+pub unsafe extern "C" fn ecall_file_write_at(file: SGX_FILE, offset: usize, buf: *const u8, len: usize) -> i32 {
+    try_io!(sgx_fseek(file, offset as i64, SEEK_SET));
+    sgx_fwrite(buf, 1, len, file) as i32
 }
 
 #[no_mangle]
-pub extern "C" fn ecall_file_set_len(fd: usize, len: usize) -> i32 {
-    let files = FILES.read().unwrap();
-    let mut file = files[&fd].0.lock().unwrap();
-
-    debug!("set_len fd = {}, len = {}", fd, len);
-    let current_len = try_io!(file.seek(SeekFrom::End(0))) as usize;
+pub unsafe extern "C" fn ecall_file_set_len(file: SGX_FILE, len: usize) -> i32 {
+    let current_len = try_io!(sgx_fseek(file, 0, SEEK_END)) as usize;
     if current_len < len {
         static ZEROS: [u8; 0x1000] = [0; 0x1000];
         let mut rest_len = len - current_len;
         while rest_len != 0 {
             let l = rest_len.min(0x1000);
-            let ret = file.write(&ZEROS[..l]);
-            if let Err(e) = ret {
-                if e.raw_os_error().unwrap() == 12 {
-                    warn!("Error 12: \"Cannot allocate memory\". Clear cache and try again.");
-                    try_io!(file.clear_cache());
-                    try_io!(file.write(&ZEROS[..l]));
-                } else {
-                    try_io!(Err(e));
-                }
+            let ret = try_io!(sgx_fwrite(ZEROS.as_ptr(), 1, l, file)) as i32;
+            if ret == -12 {
+                warn!("Error 12: \"Cannot allocate memory\". Clear cache and try again.");
+                try_io!(sgx_fclear_cache(file));
+                try_io!(sgx_fwrite(ZEROS.as_ptr(), 1, l, file));
+            } else if ret < 0 {
+                return ret;
             }
             rest_len -= l;
         }
@@ -163,24 +107,4 @@ pub extern "C" fn ecall_file_set_len(fd: usize, len: usize) -> i32 {
     }
     // TODO: how to shrink a file?
     0
-}
-
-static mut PATH: Option<PathBuf> = None;
-lazy_static! {
-    static ref FILES: RwLock<BTreeMap<usize, LockedFile>> = RwLock::new(BTreeMap::new());
-}
-
-struct LockedFile(Mutex<SgxFile>);
-
-// `sgx_tstd::sgxfs::SgxFile` not impl Send ...
-unsafe impl Send for LockedFile {}
-unsafe impl Sync for LockedFile {}
-
-/// Get file path of `fd`.
-///
-/// `ecall_set_sefs_dir` must be called first, or this will panic.
-fn get_path(fd: usize) -> PathBuf {
-    let mut path = unsafe { PATH.as_ref().unwrap().clone() };
-    path.push(format!("{}", fd));
-    path
 }
