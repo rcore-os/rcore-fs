@@ -16,7 +16,7 @@ use rcore_fs::vfs::*;
 use spin::{RwLock, RwLockWriteGuard};
 
 pub struct RamFS {
-    root: Arc<dyn INode>,
+    root: Arc<LockedINode>,
 }
 
 impl FileSystem for RamFS {
@@ -25,7 +25,7 @@ impl FileSystem for RamFS {
     }
 
     fn root_inode(&self) -> Arc<dyn INode> {
-        Arc::clone(&self.root)
+        Arc::clone(&self.root) as _
     }
 
     fn info(&self) -> FsInfo {
@@ -39,6 +39,43 @@ impl FileSystem for RamFS {
             ffree: 0,
             namemax: 0,
         }
+    }
+}
+
+impl RamFS {
+    pub fn new() -> Arc<Self> {
+        let root = Arc::new(LockedINode(RwLock::new(RamFSINode {
+            this: Weak::default(),
+            parent: Weak::default(),
+            children: BTreeMap::new(),
+            content: Vec::new(),
+            extra: Metadata {
+                dev: 0,
+                inode: 0,
+                size: 0,
+                blk_size: 0,
+                blocks: 0,
+                atime: Timespec { sec: 0, nsec: 0 },
+                mtime: Timespec { sec: 0, nsec: 0 },
+                ctime: Timespec { sec: 0, nsec: 0 },
+                type_: FileType::Dir,
+                mode: 0,
+                nlinks: 1,
+                uid: 0,
+                gid: 0,
+                rdev: 0,
+            },
+            fs: Weak::default(),
+        })));
+        let fs = Arc::new(RamFS { root });
+        let mut root = fs.root.0.write();
+        root.parent = Arc::downgrade(&fs.root);
+        root.this = Arc::downgrade(&fs.root);
+        root.fs = Arc::downgrade(&fs);
+        root.extra.inode =
+            Arc::into_raw(root.this.upgrade().unwrap()) as *const RamFSINode as usize;
+        drop(root);
+        fs
     }
 }
 
