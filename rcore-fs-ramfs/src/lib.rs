@@ -6,9 +6,9 @@ extern crate alloc;
 extern crate log;
 
 use alloc::{
+    collections::BTreeMap,
     string::{String, ToString},
     sync::{Arc, Weak},
-    vec,
     vec::Vec,
 };
 use core::any::Any;
@@ -43,11 +43,17 @@ impl FileSystem for RamFS {
 }
 
 struct RamFSINode {
-    parent: Option<Weak<dyn INode>>,
-    this: Option<Weak<dyn INode>>,
-    children: Vec<(String, Arc<dyn INode>)>,
+    /// Reference to parent INode
+    parent: Weak<LockedINode>,
+    /// Reference to myself
+    this: Weak<LockedINode>,
+    /// Reference to children INodes
+    children: BTreeMap<String, Arc<LockedINode>>,
+    /// Content of the file
     content: Vec<u8>,
+    /// INode metadata
     extra: Metadata,
+    /// Reference to FS
     fs: Weak<RamFS>,
 }
 
@@ -152,21 +158,16 @@ impl INode for LockedINode {
     ) -> Result<Arc<dyn INode>> {
         let mut file = self.0.write();
         if file.extra.type_ == FileType::Dir {
-            if name == "." {
+            if name == "." || name == ".." {
                 return Err(FsError::EntryExist);
             }
-            if name == ".." {
+            if file.children.contains_key(name) {
                 return Err(FsError::EntryExist);
             }
-            for (n, _) in file.children.iter() {
-                if n == name {
-                    return Err(FsError::EntryExist);
-                }
-            }
-            let temp_file: Arc<dyn INode> = Arc::new(LockedINode(RwLock::new(RamFSINode {
-                parent: Some(Weak::clone(file.this.as_ref().unwrap())),
-                this: None,
-                children: Vec::new(),
+            let temp_file = Arc::new(LockedINode(RwLock::new(RamFSINode {
+                parent: Weak::clone(&file.this),
+                this: Weak::default(),
+                children: BTreeMap::new(),
                 content: Vec::new(),
                 extra: Metadata {
                     dev: 0,
@@ -186,11 +187,9 @@ impl INode for LockedINode {
                 },
                 fs: Weak::clone(&file.fs),
             })));
-            let mut root = downcast_inode(Arc::as_ref(&temp_file)).0.write();
-            root.this = Some(Arc::downgrade(&temp_file));
-            drop(root);
+            temp_file.0.write().this = Arc::downgrade(&temp_file);
             file.children
-                .push((String::from(name), Arc::clone(&temp_file)));
+                .insert(String::from(name), Arc::clone(&temp_file));
             Ok(temp_file)
         } else {
             Err(FsError::NotDir)
@@ -198,9 +197,11 @@ impl INode for LockedINode {
     }
 
     fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
-        let other_lock = downcast_inode(Arc::as_ref(other));
+        let other = other
+            .downcast_ref::<LockedINode>()
+            .ok_or(FsError::NotSameFs)?;
         // to make sure locking order.
-        let mut locks = lockMultiple(&vec![&self.0, &other_lock.0]).into_iter();
+        let mut locks = lock_multiple(&[&self.0, &other.0]).into_iter();
 
         let mut file = locks.next().unwrap();
         let mut other_l = locks.next().unwrap();
@@ -211,13 +212,12 @@ impl INode for LockedINode {
         if other_l.extra.type_ == FileType::Dir {
             return Err(FsError::IsDir);
         }
-        for (n, _) in file.children.iter() {
-            if n == name {
-                return Err(FsError::EntryExist);
-            }
+        if file.children.contains_key(name) {
+            return Err(FsError::EntryExist);
         }
 
-        file.children.push((String::from(name), Arc::clone(other)));
+        file.children
+            .insert(String::from(name), other_l.this.upgrade().unwrap());
         other_l.extra.nlinks += 1;
         Ok(())
     }
@@ -230,38 +230,24 @@ impl INode for LockedINode {
         if name == "." || name == ".." {
             return Err(FsError::DirNotEmpty);
         }
-        let mut index: usize = 0;
-        for (n, f) in file.children.iter() {
-            if n == name {
-                let removal_inode = Arc::clone(f);
-                let other = downcast_inode(Arc::as_ref(&removal_inode));
-                if other.0.read().children.len() > 0 {
-                    return Err(FsError::DirNotEmpty);
-                }
-                file.children.remove(index);
-                drop(file);
-                other.0.write().extra.nlinks -= 1;
-                return Ok(());
-            } else {
-                index += 1;
-            }
+        let other = file.children.get(name).ok_or(FsError::EntryNotFound)?;
+        if other.0.read().children.len() > 0 {
+            return Err(FsError::DirNotEmpty);
         }
+        other.0.write().extra.nlinks -= 1;
+        file.children.remove(name);
         Ok(())
     }
 
     fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()> {
         let elem = self.find(old_name)?;
-        let t = downcast_inode(Arc::as_ref(target));
-        if let Err(err) = t.link(new_name, &elem) {
+        target.link(new_name, &elem)?;
+        if let Err(err) = self.unlink(old_name) {
+            // recover
+            target.unlink(new_name)?;
             return Err(err);
-        } else {
-            if let Err(err) = self.unlink(old_name) {
-                t.unlink(new_name)?;
-                return Err(err);
-            } else {
-                return Ok(());
-            }
         }
+        Ok(())
     }
 
     fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
@@ -271,25 +257,11 @@ impl INode for LockedINode {
         }
         //info!("find it: {} {}", name, file.parent.is_none());
         match name {
-            "." => Ok(file
-                .this
-                .as_ref()
-                .unwrap()
-                .upgrade()
-                .ok_or(FsError::EntryNotFound)?),
-            ".." => Ok(file
-                .parent
-                .as_ref()
-                .unwrap()
-                .upgrade()
-                .ok_or(FsError::EntryNotFound)?),
+            "." => Ok(file.this.upgrade().ok_or(FsError::EntryNotFound)?),
+            ".." => Ok(file.parent.upgrade().ok_or(FsError::EntryNotFound)?),
             name => {
-                for (s, e) in file.children.iter() {
-                    if s == name {
-                        return Ok(Arc::clone(e));
-                    }
-                }
-                Err(FsError::EntryNotFound)
+                let s = file.children.get(name).ok_or(FsError::EntryNotFound)?;
+                Ok(Arc::clone(s) as Arc<dyn INode>)
             }
         }
     }
@@ -304,7 +276,7 @@ impl INode for LockedINode {
             0 => Ok(String::from(".")),
             1 => Ok(String::from("..")),
             i => {
-                if let Some((s, _)) = file.children.get(i - 2) {
+                if let Some(s) = file.children.keys().nth(i - 2) {
                     Ok(s.to_string())
                 } else {
                     Err(FsError::EntryNotFound)
@@ -326,22 +298,9 @@ impl INode for LockedINode {
     }
 }
 
-fn lockMultiple<'a>(locks: &[&'a RwLock<RamFSINode>]) -> Vec<RwLockWriteGuard<'a, RamFSINode>> {
-    let mut v: Vec<(usize, &'a RwLock<RamFSINode>, usize)> = Vec::new();
-    let mut index: usize = 0;
-    for l in locks {
-        v.push((index, *l, l.read().extra.inode));
-        index += 1;
-    }
-    v.sort_by_key(|l| l.2);
-    let mut v2: Vec<(usize, RwLockWriteGuard<'a, RamFSINode>)> = v
-        .into_iter()
-        .map(|(index, lock, _inode)| (index, lock.write()))
-        .collect();
-    v2.sort_by_key(|(index, _lock)| *index);
-    v2.into_iter().map(|(_index, lock)| lock).collect()
-}
-
-fn downcast_inode<'a>(inode: &'a dyn INode) -> &'a LockedINode {
-    inode.as_any_ref().downcast_ref::<LockedINode>().unwrap()
+/// Lock INodes order by their inode id
+fn lock_multiple<'a>(locks: &[&'a RwLock<RamFSINode>]) -> Vec<RwLockWriteGuard<'a, RamFSINode>> {
+    let mut order: Vec<usize> = (0..locks.len()).collect();
+    order.sort_by_key(|&i| locks[i].read().extra.inode);
+    order.iter().map(|&i| locks[i].write()).collect()
 }
