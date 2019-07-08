@@ -12,7 +12,7 @@ use rcore_fs::vfs::{FileType, INode};
 const DEFAULT_MODE: u32 = 0o664;
 const BUF_SIZE: usize = 0x1000;
 
-pub fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<(), Box<Error>> {
+pub fn zip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>> {
     let dir = fs::read_dir(path)?;
     for entry in dir {
         let entry = entry?;
@@ -45,7 +45,7 @@ pub fn zip_dir(path: &Path, inode: Arc<INode>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-pub fn unzip_dir(path: &Path, inode: Arc<INode>) -> Result<(), Box<Error>> {
+pub fn unzip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>> {
     let files = inode.list()?;
     for name in files.iter().skip(2) {
         let inode = inode.lookup(name.as_str())?;

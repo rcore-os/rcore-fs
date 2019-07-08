@@ -9,9 +9,9 @@ use rcore_fs::vfs::FileSystem;
 #[cfg(feature = "use_fuse")]
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
+use rcore_fs_ramfs as ramfs;
 use rcore_fs_sefs as sefs;
 use rcore_fs_sfs as sfs;
-use rcore_fs_ramfs as ramfs;
 
 use git_version::git_version;
 
@@ -69,7 +69,7 @@ fn main() {
         }
     };
 
-    let fs: Arc<FileSystem> = match opt.fs.as_str() {
+    let fs: Arc<dyn FileSystem> = match opt.fs.as_str() {
         "sfs" => {
             let file = OpenOptions::new()
                 .read(true)
@@ -96,9 +96,7 @@ fn main() {
                     .expect("failed to open sefs"),
             }
         }
-        "ramfs" => {
-            ramfs::RamFS::new()
-        }
+        "ramfs" => ramfs::RamFS::new(),
         _ => panic!("unsupported file system"),
     };
     match opt.cmd {
