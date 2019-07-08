@@ -11,6 +11,7 @@ use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
 use rcore_fs_sefs as sefs;
 use rcore_fs_sfs as sfs;
+use rcore_fs_ramfs as ramfs;
 
 use git_version::git_version;
 
@@ -28,7 +29,7 @@ struct Opt {
     #[structopt(parse(from_os_str))]
     dir: PathBuf,
 
-    /// File system: [sfs | sefs]
+    /// File system: [sfs | sefs | ramfs]
     #[structopt(short = "f", long = "fs", default_value = "sfs")]
     fs: String,
 }
@@ -94,6 +95,9 @@ fn main() {
                 false => sefs::SEFS::open(Box::new(device), &StdTimeProvider)
                     .expect("failed to open sefs"),
             }
+        }
+        "ramfs" => {
+            ramfs::RamFS::new()
         }
         _ => panic!("unsupported file system"),
     };

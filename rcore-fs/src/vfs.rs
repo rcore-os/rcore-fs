@@ -164,7 +164,7 @@ pub struct PollStatus {
 /// Metadata of INode
 ///
 /// Ref: [http://pubs.opengroup.org/onlinepubs/009604499/basedefs/sys/stat.h.html]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Metadata {
     /// Device ID
     pub dev: usize, // (major << 8) | minor

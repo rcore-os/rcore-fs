@@ -51,7 +51,7 @@ impl RamFS {
             content: Vec::new(),
             extra: Metadata {
                 dev: 0,
-                inode: 0,
+                inode: new_inode_id(),
                 size: 0,
                 blk_size: 0,
                 blocks: 0,
@@ -59,7 +59,7 @@ impl RamFS {
                 mtime: Timespec { sec: 0, nsec: 0 },
                 ctime: Timespec { sec: 0, nsec: 0 },
                 type_: FileType::Dir,
-                mode: 0,
+                mode: 0o777,
                 nlinks: 1,
                 uid: 0,
                 gid: 0,
@@ -137,24 +137,9 @@ impl INode for LockedINode {
 
     fn metadata(&self) -> Result<Metadata> {
         let file = self.0.read();
-        let extra = &file.extra;
-        let size = file.content.len();
-        Ok(Metadata {
-            dev: 0,
-            inode: extra.inode,
-            size: size,
-            blk_size: 4096,
-            blocks: size / 4096,
-            atime: extra.atime,
-            mtime: extra.mtime,
-            ctime: extra.ctime,
-            type_: extra.type_,
-            mode: extra.mode,
-            nlinks: extra.nlinks,
-            uid: extra.uid,
-            gid: extra.gid,
-            rdev: extra.rdev,
-        })
+        let mut metadata = file.extra.clone();
+        metadata.size = file.content.len();
+        Ok(metadata)
     }
 
     fn set_metadata(&self, metadata: &Metadata) -> Result<()> {
@@ -208,16 +193,16 @@ impl INode for LockedINode {
                 content: Vec::new(),
                 extra: Metadata {
                     dev: 0,
-                    inode: 0,
+                    inode: new_inode_id(),
                     size: 0,
                     blk_size: 0,
                     blocks: 0,
                     atime: Timespec { sec: 0, nsec: 0 },
                     mtime: Timespec { sec: 0, nsec: 0 },
                     ctime: Timespec { sec: 0, nsec: 0 },
-                    type_: type_,
+                    type_,
                     mode: mode as u16,
-                    nlinks: 0,
+                    nlinks: 1,
                     uid: 0,
                     gid: 0,
                     rdev: data,
@@ -340,4 +325,11 @@ fn lock_multiple<'a>(locks: &[&'a RwLock<RamFSINode>]) -> Vec<RwLockWriteGuard<'
     let mut order: Vec<usize> = (0..locks.len()).collect();
     order.sort_by_key(|&i| locks[i].read().extra.inode);
     order.iter().map(|&i| locks[i].write()).collect()
+}
+
+/// Generate a new inode id
+fn new_inode_id() -> usize {
+    use core::sync::atomic::*;
+    static ID: AtomicUsize = AtomicUsize::new(1);
+    ID.fetch_add(1, Ordering::SeqCst)
 }

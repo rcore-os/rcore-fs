@@ -6,7 +6,6 @@ use rcore_fs::vfs;
 use std::collections::btree_map::BTreeMap;
 use std::ffi::OsStr;
 use std::sync::Arc;
-//use log::*;
 use time::Timespec;
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 }; // 1 second
