@@ -22,9 +22,13 @@ mod tests;
 
 /// The filesystem on which all the other filesystems are mounted
 pub struct MountFS {
-    filesystem: Arc<dyn FileSystem>,
+    /// The inner file system
+    inner: Arc<dyn FileSystem>,
+    /// All mounted children file systems
     mountpoints: RwLock<BTreeMap<INodeId, Arc<MountFS>>>,
+    /// The mount point of this file system
     self_mountpoint: Option<Arc<MNode>>,
+    /// Weak reference to self
     self_ref: Weak<MountFS>,
 }
 
@@ -39,16 +43,21 @@ lazy_static! {
         = Arc::new(unsafe { uninitialized() });
 }
 
+/// INode for `MountFS`
 pub struct MNode {
+    /// The inner INode
     pub inode: Arc<dyn INode>,
+    /// Associated `MountFS`
     pub vfs: Arc<MountFS>,
+    /// Weak reference to self
     self_ref: Weak<MNode>,
 }
 
 impl MountFS {
+    /// Create a `MountFS` wrapper for file system `fs`
     pub fn new(fs: Arc<dyn FileSystem>) -> Arc<Self> {
         MountFS {
-            filesystem: fs,
+            inner: fs,
             mountpoints: RwLock::new(BTreeMap::new()),
             self_mountpoint: None,
             self_ref: Weak::default(),
@@ -70,9 +79,10 @@ impl MountFS {
         }
     }
 
-    fn _root_inode(&self) -> Arc<MNode> {
+    /// Strong type version of `root_inode`
+    pub fn root_inode(&self) -> Arc<MNode> {
         MNode {
-            inode: self.filesystem.root_inode(),
+            inode: self.inner.root_inode(),
             vfs: self.self_ref.upgrade().unwrap(),
             self_ref: Weak::default(),
         }
@@ -98,7 +108,7 @@ impl MNode {
     /// Mount file system `fs` at this INode
     pub fn mount(&self, fs: Arc<dyn FileSystem>) -> Result<Arc<MountFS>> {
         let new_fs = MountFS {
-            filesystem: fs,
+            inner: fs,
             mountpoints: RwLock::new(BTreeMap::new()),
             self_mountpoint: Some(self.self_ref.upgrade().unwrap()),
             self_ref: Weak::default(),
@@ -117,13 +127,14 @@ impl MNode {
     fn overlaid_inode(&self) -> Arc<MNode> {
         let inode_id = self.metadata().unwrap().inode;
         if let Some(sub_vfs) = self.vfs.mountpoints.read().get(&inode_id) {
-            sub_vfs._root_inode()
+            sub_vfs.root_inode()
         } else {
             self.self_ref.upgrade().unwrap()
         }
     }
 
-    fn is_root_inode(&self) -> bool {
+    /// Is the root INode of its FS?
+    fn is_root(&self) -> bool {
         self.inode.fs().root_inode().metadata().unwrap().inode
             == self.inode.metadata().unwrap().inode
     }
@@ -142,6 +153,7 @@ impl MNode {
         Arc::ptr_eq(&self.vfs, &ANONYMOUS_FS)
     }
 
+    /// Strong type version of `create()`
     pub fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<Self>> {
         Ok(MNode {
             inode: self.inode.create(name, type_, mode)?,
@@ -151,7 +163,7 @@ impl MNode {
         .wrap())
     }
 
-    /// Does a one-level finding.
+    /// Strong type version of `find()`
     pub fn find(&self, root: bool, name: &str) -> Result<Arc<Self>> {
         match name {
             "" | "." => Ok(self.self_ref.upgrade().unwrap()),
@@ -164,7 +176,7 @@ impl MNode {
                 // TODO: check going up.
                 if root {
                     Ok(self.self_ref.upgrade().unwrap())
-                } else if self.is_root_inode() {
+                } else if self.is_root() {
                     // Here is mountpoint.
                     match &self.vfs.self_mountpoint {
                         Some(inode) => inode.find(root, ".."),
@@ -219,16 +231,16 @@ impl MNode {
 
 impl FileSystem for MountFS {
     fn sync(&self) -> Result<()> {
-        self.filesystem.sync()?;
+        self.inner.sync()?;
         Ok(())
     }
 
     fn root_inode(&self) -> Arc<dyn INode> {
-        self._root_inode()
+        self.root_inode()
     }
 
     fn info(&self) -> FsInfo {
-        self.filesystem.info()
+        self.inner.info()
     }
 }
 
@@ -279,6 +291,11 @@ impl INode for MNode {
     }
 
     fn unlink(&self, name: &str) -> Result<()> {
+        let inode_id = self.inode.find(name)?.metadata()?.inode;
+        // target INode is being mounted
+        if self.vfs.mountpoints.read().contains_key(&inode_id) {
+            return Err(FsError::Busy);
+        }
         self.inode.unlink(name)
     }
 
@@ -303,7 +320,7 @@ impl INode for MNode {
     }
 
     fn fs(&self) -> Arc<dyn FileSystem> {
-        self.inode.fs()
+        self.vfs.clone()
     }
 
     fn as_any_ref(&self) -> &dyn Any {
