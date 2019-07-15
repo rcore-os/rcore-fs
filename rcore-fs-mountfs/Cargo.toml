@@ -1,0 +1,14 @@
+[package]
+name = "rcore-fs-mountfs"
+version = "0.1.0"
+authors = ["gjz010 <gjz010944@gmail.com>", "WangRunji <wangrunji0408@163.com>"]
+edition = "2018"
+
+[dependencies]
+rcore-fs = { path = "../rcore-fs" }
+spin = "0.5"
+log = "0.4"
+lazy_static = { version = "1.3", features = ["spin_no_std"] }
+
+[dev-dependencies]
+rcore-fs-ramfs = { path = "../rcore-fs-ramfs" }
