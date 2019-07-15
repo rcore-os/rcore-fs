@@ -23,7 +23,7 @@ use rcore_fs::vfs;
 
 #[derive(Clone)]
 struct Ext2Volume {
-    inner: Arc<Device>,
+    inner: Arc<dyn Device>,
 }
 
 #[derive(Clone)]
@@ -67,11 +67,11 @@ impl core::convert::From<DevError> for Ext2Error {
 }
 
 impl Ext2FileSystem {
-    pub fn open(device: Arc<Device>) -> vfs::Result<Arc<Self>> {
+    pub fn open(device: Arc<dyn Device>) -> vfs::Result<Arc<Self>> {
         Ok(Self::open_internal(device)?)
     }
 
-    fn open_internal(device: Arc<Device>) -> Result<Arc<Self>, Ext2Error> {
+    fn open_internal(device: Arc<dyn Device>) -> Result<Arc<Self>, Ext2Error> {
         let volume = Ext2Volume { inner: device };
         let fs = Synced::new(volume.clone())?;
         Ok(Arc::new(Ext2FileSystem { inner: fs, volume }))

@@ -10,15 +10,15 @@ Core:
 
 * `rcore-fs`: Interfaces and utilities that can be used in an OS.
   * Virtual File System: `FileSystem`, `INode`
-  * Device and cache layer: `BlockDevice`, `CachedDevice`(TODO)
+  * Device and cache layer: `BlockDevice`, `BlockCache`
 
 Specific file systems:
 
 * `rcore-fs-sfs`: Simple File System from [uCore OS](https://github.com/chyyuu/ucore_os_lab)
 * `rcore-fs-sefs`: Simple Encrypted File System 
-* `rcore-fs-fat32`: (TODO) FAT32
-* `rcore-fs-ramfs`: (TODO) RAM based FS.
-* `rcore-fs-devfs`: (TODO) Device driver as files
+* `rcore-fs-ext2`: Ext2
+* `rcore-fs-ramfs`: RAM based FS
+* `rcore-fs-mountfs`: Mountable FS wrapper
 
 Utilities:
 

@@ -28,7 +28,7 @@ pub mod dev;
 mod structs;
 
 /// Helper methods for `File`
-impl File {
+impl dyn File {
     fn read_block(&self, id: BlockId, buf: &mut [u8]) -> DevResult<()> {
         assert!(buf.len() <= BLKSIZE);
         self.read_exact_at(buf, id * BLKSIZE)
@@ -60,7 +60,7 @@ pub struct INodeImpl {
     /// on-disk inode
     disk_inode: RwLock<Dirty<DiskINode>>,
     /// back file
-    file: Box<File>,
+    file: Box<dyn File>,
     /// Reference to FS
     fs: Arc<SEFS>,
 }
@@ -232,7 +232,12 @@ impl vfs::INode for INodeImpl {
         self.disk_inode.write().size = len as u32;
         Ok(())
     }
-    fn create(&self, name: &str, type_: vfs::FileType, mode: u32) -> vfs::Result<Arc<vfs::INode>> {
+    fn create(
+        &self,
+        name: &str,
+        type_: vfs::FileType,
+        mode: u32,
+    ) -> vfs::Result<Arc<dyn vfs::INode>> {
         let type_ = match type_ {
             vfs::FileType::File => FileType::File,
             vfs::FileType::Dir => FileType::Dir,
@@ -309,7 +314,7 @@ impl vfs::INode for INodeImpl {
 
         Ok(())
     }
-    fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
+    fn link(&self, name: &str, other: &Arc<dyn INode>) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -337,7 +342,7 @@ impl vfs::INode for INodeImpl {
         child.nlinks_inc();
         Ok(())
     }
-    fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
+    fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -398,7 +403,7 @@ impl vfs::INode for INodeImpl {
 
         Ok(())
     }
-    fn find(&self, name: &str) -> vfs::Result<Arc<vfs::INode>> {
+    fn find(&self, name: &str) -> vfs::Result<Arc<dyn vfs::INode>> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -419,10 +424,10 @@ impl vfs::INode for INodeImpl {
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<()> {
         Err(FsError::NotSupported)
     }
-    fn fs(&self) -> Arc<vfs::FileSystem> {
+    fn fs(&self) -> Arc<dyn vfs::FileSystem> {
         self.fs.clone()
     }
-    fn as_any_ref(&self) -> &Any {
+    fn as_any_ref(&self) -> &dyn Any {
         self
     }
 }
@@ -449,11 +454,11 @@ pub struct SEFS {
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
-    device: Box<Storage>,
+    device: Box<dyn Storage>,
     /// metadata file
-    meta_file: Box<File>,
+    meta_file: Box<dyn File>,
     /// Time provider
-    time_provider: &'static TimeProvider,
+    time_provider: &'static dyn TimeProvider,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SEFS>,
 }
@@ -461,8 +466,8 @@ pub struct SEFS {
 impl SEFS {
     /// Load SEFS
     pub fn open(
-        device: Box<Storage>,
-        time_provider: &'static TimeProvider,
+        device: Box<dyn Storage>,
+        time_provider: &'static dyn TimeProvider,
     ) -> vfs::Result<Arc<Self>> {
         let meta_file = device.open(0)?;
         let super_block = meta_file.load_struct::<SuperBlock>(BLKN_SUPER)?;
@@ -496,8 +501,8 @@ impl SEFS {
     }
     /// Create a new SEFS
     pub fn create(
-        device: Box<Storage>,
-        time_provider: &'static TimeProvider,
+        device: Box<dyn Storage>,
+        time_provider: &'static dyn TimeProvider,
     ) -> vfs::Result<Arc<Self>> {
         let blocks = BLKBITS;
 
@@ -683,7 +688,7 @@ impl vfs::FileSystem for SEFS {
         Ok(())
     }
 
-    fn root_inode(&self) -> Arc<vfs::INode> {
+    fn root_inode(&self) -> Arc<dyn vfs::INode> {
         self.get_inode(BLKN_ROOT)
     }
 

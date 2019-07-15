@@ -32,27 +32,33 @@ pub trait INode: Any + Sync + Send {
     fn resize(&self, len: usize) -> Result<()>;
 
     /// Create a new INode in the directory
-    fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<INode>>{
+    fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<dyn INode>> {
         self.create2(name, type_, mode, 0)
     }
 
     /// Create a new INode in the directory, with a data field for usages like device file.
-    fn create2(&self, name: &str, type_: FileType, mode: u32, data: usize) -> Result<Arc<INode>>{
+    fn create2(
+        &self,
+        name: &str,
+        type_: FileType,
+        mode: u32,
+        _data: usize,
+    ) -> Result<Arc<dyn INode>> {
         self.create(name, type_, mode)
     }
 
     /// Create a hard link `name` to `other`
-    fn link(&self, name: &str, other: &Arc<INode>) -> Result<()>;
+    fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()>;
 
     /// Delete a hard link `name`
     fn unlink(&self, name: &str) -> Result<()>;
 
     /// Move INode `self/old_name` to `target/new_name`.
     /// If `target` equals `self`, do rename.
-    fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> Result<()>;
+    fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()>;
 
     /// Find the INode `name` in the directory
-    fn find(&self, name: &str) -> Result<Arc<INode>>;
+    fn find(&self, name: &str) -> Result<Arc<dyn INode>>;
 
     /// Get the name of directory entry
     fn get_entry(&self, id: usize) -> Result<String>;
@@ -61,14 +67,14 @@ pub trait INode: Any + Sync + Send {
     fn io_control(&self, cmd: u32, data: usize) -> Result<()>;
 
     /// Get the file system of the INode
-    fn fs(&self) -> Arc<FileSystem>;
+    fn fs(&self) -> Arc<dyn FileSystem>;
 
     /// This is used to implement dynamics cast.
     /// Simply return self in the implement of the function.
-    fn as_any_ref(&self) -> &Any;
+    fn as_any_ref(&self) -> &dyn Any;
 }
 
-impl INode {
+impl dyn INode {
     /// Downcast the INode to specific struct
     pub fn downcast_ref<T: INode>(&self) -> Option<&T> {
         self.as_any_ref().downcast_ref::<T>()
@@ -88,12 +94,12 @@ impl INode {
     }
 
     /// Lookup path from current INode, and do not follow symlinks
-    pub fn lookup(&self, path: &str) -> Result<Arc<INode>> {
+    pub fn lookup(&self, path: &str) -> Result<Arc<dyn INode>> {
         self.lookup_follow(path, 0)
     }
 
     /// Lookup path from current INode, and follow symlinks at most `follow_times` times
-    pub fn lookup_follow(&self, path: &str, mut follow_times: usize) -> Result<Arc<INode>> {
+    pub fn lookup_follow(&self, path: &str, mut follow_times: usize) -> Result<Arc<dyn INode>> {
         if self.metadata()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
@@ -164,7 +170,7 @@ pub struct PollStatus {
 /// Metadata of INode
 ///
 /// Ref: [http://pubs.opengroup.org/onlinepubs/009604499/basedefs/sys/stat.h.html]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Metadata {
     /// Device ID
     pub dev: usize, // (major << 8) | minor
@@ -246,25 +252,26 @@ pub struct FsInfo {
 
 // Note: IOError/NoMemory always lead to a panic since it's hard to recover from it.
 //       We also panic when we can not parse the fs on disk normally
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum FsError {
-    NotSupported,  //E_UNIMP, or E_INVAL
-    NotFile,       //E_ISDIR
-    IsDir,         //E_ISDIR, used only in link
-    NotDir,        //E_NOTDIR
-    EntryNotFound, //E_NOENT
-    EntryExist,    //E_EXIST
-    NotSameFs,     //E_XDEV
-    InvalidParam,  //E_INVAL
-    NoDeviceSpace, //E_NOSPC, but is defined and not used in the original ucore, which uses E_NO_MEM
-    DirRemoved,    //E_NOENT, when the current dir was remove by a previous unlink
-    DirNotEmpty,   //E_NOTEMPTY
-    WrongFs,       //E_INVAL, when we find the content on disk is wrong when opening the device
+    NotSupported,  // E_UNIMP, or E_INVAL
+    NotFile,       // E_ISDIR
+    IsDir,         // E_ISDIR, used only in link
+    NotDir,        // E_NOTDIR
+    EntryNotFound, // E_NOENT
+    EntryExist,    // E_EXIST
+    NotSameFs,     // E_XDEV
+    InvalidParam,  // E_INVAL
+    NoDeviceSpace, // E_NOSPC, but is defined and not used in the original ucore, which uses E_NO_MEM
+    DirRemoved,    // E_NOENT, when the current dir was remove by a previous unlink
+    DirNotEmpty,   // E_NOTEMPTY
+    WrongFs,       // E_INVAL, when we find the content on disk is wrong when opening the device
     DeviceError,
     IOCTLError,
     NoDevice,
-    Again, // E_AGAIN, when no data is available, never happens in fs
-    SymLoop, //E_LOOP
+    Again,         // E_AGAIN, when no data is available, never happens in fs
+    SymLoop,       // E_LOOP
+    Busy,          // E_BUSY
 }
 
 impl fmt::Display for FsError {
@@ -285,12 +292,12 @@ impl std::error::Error for FsError {}
 pub type Result<T> = result::Result<T, FsError>;
 
 /// Abstract file system
-pub trait FileSystem: Sync+Send {
+pub trait FileSystem: Sync + Send {
     /// Sync all data to the storage
     fn sync(&self) -> Result<()>;
 
     /// Get the root INode of the file system
-    fn root_inode(&self) -> Arc<INode>;
+    fn root_inode(&self) -> Arc<dyn INode>;
 
     /// Get the file system information
     fn info(&self) -> FsInfo;

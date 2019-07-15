@@ -2,7 +2,7 @@
 
 use crate::vfs;
 use alloc::str;
-use core::any::Any;
+
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::{size_of, size_of_val};
 use core::slice;
@@ -55,7 +55,7 @@ pub trait DeviceINode : Any + Sync + Send{
 }
 */
 
-pub type DeviceINode = vfs::INode;
+pub type DeviceINode = dyn vfs::INode;
 
 #[repr(C)]
 pub struct IndirectBlock {

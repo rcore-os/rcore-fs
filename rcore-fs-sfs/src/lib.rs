@@ -7,7 +7,6 @@ extern crate alloc;
 extern crate log;
 
 use alloc::{
-    boxed::Box,
     collections::BTreeMap,
     string::String,
     sync::{Arc, Weak},
@@ -19,7 +18,7 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
-use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use spin::RwLock;
 
 use rcore_fs::dev::Device;
 use rcore_fs::dirty::Dirty;
@@ -55,7 +54,7 @@ trait DeviceExt: Device {
     }
 }
 
-impl DeviceExt for Device {}
+impl DeviceExt for dyn Device {}
 
 /// INode for SFS
 pub struct INodeImpl {
@@ -322,7 +321,7 @@ impl INodeImpl {
     /// Read/Write content, no matter what type it is
     fn _io_at<F>(&self, begin: usize, end: usize, mut f: F) -> vfs::Result<usize>
     where
-        F: FnMut(&Arc<Device>, &BlockRange, usize) -> vfs::Result<()>,
+        F: FnMut(&Arc<dyn Device>, &BlockRange, usize) -> vfs::Result<()>,
     {
         let size = self.disk_inode.read().size as usize;
         let iter = BlockIter {
@@ -394,7 +393,7 @@ impl INodeImpl {
             id: child.id as u32,
             name: Str256::from(name),
         };
-        let mut disk_inode = self.disk_inode.write();
+        let disk_inode = self.disk_inode.write();
         let old_size = disk_inode.size as usize;
         self._resize(old_size + BLKSIZE)?;
         self._write_at(old_size, entry.as_buf()).unwrap();
@@ -498,7 +497,13 @@ impl vfs::INode for INodeImpl {
         }
         self._resize(len)
     }
-    fn create2(&self, name: &str, type_: vfs::FileType, _mode: u32, data: usize)->vfs::Result<Arc<vfs::INode>>{
+    fn create2(
+        &self,
+        name: &str,
+        type_: vfs::FileType,
+        _mode: u32,
+        data: usize,
+    ) -> vfs::Result<Arc<dyn vfs::INode>> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -535,7 +540,7 @@ impl vfs::INode for INodeImpl {
         Ok(inode)
     }
 
-    fn link(&self, name: &str, other: &Arc<INode>) -> vfs::Result<()> {
+    fn link(&self, name: &str, other: &Arc<dyn INode>) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -598,7 +603,7 @@ impl vfs::INode for INodeImpl {
 
         Ok(())
     }
-    fn move_(&self, old_name: &str, target: &Arc<INode>, new_name: &str) -> vfs::Result<()> {
+    fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> vfs::Result<()> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -658,7 +663,7 @@ impl vfs::INode for INodeImpl {
         }
         Ok(())
     }
-    fn find(&self, name: &str) -> vfs::Result<Arc<vfs::INode>> {
+    fn find(&self, name: &str) -> vfs::Result<Arc<dyn vfs::INode>> {
         let info = self.metadata()?;
         if info.type_ != vfs::FileType::Dir {
             return Err(FsError::NotDir);
@@ -690,10 +695,10 @@ impl vfs::INode for INodeImpl {
             }
         }
     }
-    fn fs(&self) -> Arc<vfs::FileSystem> {
+    fn fs(&self) -> Arc<dyn vfs::FileSystem> {
         self.fs.clone()
     }
-    fn as_any_ref(&self) -> &Any {
+    fn as_any_ref(&self) -> &dyn Any {
         self
     }
 }
@@ -725,7 +730,7 @@ pub struct SimpleFileSystem {
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
-    device: Arc<Device>,
+    device: Arc<dyn Device>,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SimpleFileSystem>,
     /// device inode
@@ -734,7 +739,7 @@ pub struct SimpleFileSystem {
 
 impl SimpleFileSystem {
     /// Load SFS from device
-    pub fn open(device: Arc<Device>) -> vfs::Result<Arc<Self>> {
+    pub fn open(device: Arc<dyn Device>) -> vfs::Result<Arc<Self>> {
         let super_block = device.load_struct::<SuperBlock>(BLKN_SUPER)?;
         if !super_block.check() {
             return Err(FsError::WrongFs);
@@ -759,7 +764,7 @@ impl SimpleFileSystem {
         .wrap())
     }
     /// Create a new SFS on blank disk
-    pub fn create(device: Arc<Device>, space: usize) -> vfs::Result<Arc<Self>> {
+    pub fn create(device: Arc<dyn Device>, space: usize) -> vfs::Result<Arc<Self>> {
         let blocks = (space + BLKSIZE - 1) / BLKSIZE;
         let freemap_blocks = (space + BLKBITS * BLKSIZE - 1) / BLKBITS / BLKSIZE;
         assert!(blocks >= 16, "space too small");
@@ -945,7 +950,7 @@ impl vfs::FileSystem for SimpleFileSystem {
         Ok(())
     }
 
-    fn root_inode(&self) -> Arc<vfs::INode> {
+    fn root_inode(&self) -> Arc<dyn vfs::INode> {
         self.get_inode(BLKN_ROOT)
         // let root = self.get_inode(BLKN_ROOT);
         // root.create("dev", vfs::FileType::Dir, 0).expect("fail to create dev"); // what's mode?

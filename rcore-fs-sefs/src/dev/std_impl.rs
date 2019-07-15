@@ -20,14 +20,14 @@ impl StdStorage {
 }
 
 impl super::Storage for StdStorage {
-    fn open(&self, file_id: usize) -> DevResult<Box<super::File>> {
+    fn open(&self, file_id: usize) -> DevResult<Box<dyn super::File>> {
         let mut path = self.path.to_path_buf();
         path.push(format!("{}", file_id));
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         Ok(Box::new(Mutex::new(file)))
     }
 
-    fn create(&self, file_id: usize) -> DevResult<Box<super::File>> {
+    fn create(&self, file_id: usize) -> DevResult<Box<dyn super::File>> {
         let mut path = self.path.to_path_buf();
         path.push(format!("{}", file_id));
         let file = OpenOptions::new()

@@ -36,8 +36,8 @@ pub trait File: Send + Sync {
 
 /// The collection of all files in the FS.
 pub trait Storage: Send + Sync {
-    fn open(&self, file_id: usize) -> DevResult<Box<File>>;
-    fn create(&self, file_id: usize) -> DevResult<Box<File>>;
+    fn open(&self, file_id: usize) -> DevResult<Box<dyn File>>;
+    fn create(&self, file_id: usize) -> DevResult<Box<dyn File>>;
     fn remove(&self, file_id: usize) -> DevResult<()>;
 }
 

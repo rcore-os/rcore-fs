@@ -2,14 +2,14 @@ use crate::vfs::{INode, Metadata, Result};
 use alloc::{string::String, sync::Arc};
 
 pub struct File {
-    inode: Arc<INode>,
+    inode: Arc<dyn INode>,
     offset: usize,
     readable: bool,
     writable: bool,
 }
 
 impl File {
-    pub fn new(inode: Arc<INode>, readable: bool, writable: bool) -> Self {
+    pub fn new(inode: Arc<dyn INode>, readable: bool, writable: bool) -> Self {
         File {
             inode,
             offset: 0,
