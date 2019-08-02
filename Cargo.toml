@@ -6,6 +6,7 @@ members = [
     "rcore-fs-fuse",
     "rcore-fs-ext2",
     "rcore-fs-ramfs",
-    "rcore-fs-mountfs"
+    "rcore-fs-mountfs",
+    "rcore-fs-devfs"
 ]
 exclude = ["sefs-fuse"]

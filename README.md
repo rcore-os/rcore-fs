@@ -19,6 +19,7 @@ Specific file systems:
 * `rcore-fs-ext2`: Ext2
 * `rcore-fs-ramfs`: RAM based FS
 * `rcore-fs-mountfs`: Mountable FS wrapper
+* `rcore-fs-devfs`: Device file system
 
 Utilities:
 
