@@ -232,6 +232,9 @@ impl MNode {
 impl FileSystem for MountFS {
     fn sync(&self) -> Result<()> {
         self.inner.sync()?;
+        for mount_fs in self.mountpoints.read().values() {
+            mount_fs.sync()?;
+        }
         Ok(())
     }
 
