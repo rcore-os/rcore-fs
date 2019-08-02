@@ -15,7 +15,6 @@ use core::fmt::{Debug, Error, Formatter};
 use core::mem::uninitialized;
 
 use bitvec::BitVec;
-use log::*;
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
@@ -151,9 +150,13 @@ impl vfs::INode for INodeImpl {
         Ok(len)
     }
     fn write_at(&self, offset: usize, buf: &[u8]) -> vfs::Result<usize> {
-        let type_ = self.disk_inode.read().type_;
+        let DiskINode { type_, size, .. } = **self.disk_inode.read();
         if type_ != FileType::File && type_ != FileType::SymLink {
             return Err(FsError::NotFile);
+        }
+        let end_offset = offset + buf.len();
+        if (size as usize) < end_offset {
+            self.resize(end_offset)?;
         }
         let len = self.file.write_at(buf, offset)?;
         Ok(len)
