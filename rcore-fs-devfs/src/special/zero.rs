@@ -40,7 +40,7 @@ impl INode for ZeroINode {
             nlinks: 1,
             uid: 0,
             gid: 0,
-            rdev: 5,
+            rdev: make_rdev(1, 5),
         })
     }
 

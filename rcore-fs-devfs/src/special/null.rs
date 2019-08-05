@@ -37,7 +37,7 @@ impl INode for NullINode {
             nlinks: 1,
             uid: 0,
             gid: 0,
-            rdev: 3,
+            rdev: make_rdev(1, 3),
         })
     }
 

@@ -302,3 +302,7 @@ pub trait FileSystem: Sync + Send {
     /// Get the file system information
     fn info(&self) -> FsInfo;
 }
+
+pub fn make_rdev(major: usize, minor: usize) -> usize {
+    ((major & 0xfff) << 8) | (minor & 0xff)
+}
