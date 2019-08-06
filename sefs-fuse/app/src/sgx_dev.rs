@@ -5,12 +5,20 @@ use std::fs::remove_file;
 
 pub struct SgxStorage {
     path: PathBuf,
+    integrity_only: bool,
 }
 
 impl SgxStorage {
-    pub fn new(eid: sgx_enclave_id_t, path: impl AsRef<Path>) -> Self {
+    pub fn new(
+        eid: sgx_enclave_id_t,
+        path: impl AsRef<Path>,
+        integrity_only: bool,
+    ) -> Self {
         unsafe { EID = eid; }
-        SgxStorage { path: path.as_ref().to_path_buf() }
+        SgxStorage {
+            path: path.as_ref().to_path_buf(),
+            integrity_only: integrity_only,
+        }
     }
 }
 
@@ -18,14 +26,14 @@ impl Storage for SgxStorage {
     fn open(&self, file_id: usize) -> DevResult<Box<File>> {
         let mut path = self.path.clone();
         path.push(format!("{}", file_id));
-        let file = file_open(path.to_str().unwrap(), false, &[0u8; 16]);
+        let file = file_open(path.to_str().unwrap(), false, self.integrity_only);
         Ok(Box::new(SgxFile { file }))
     }
 
     fn create(&self, file_id: usize) -> DevResult<Box<File>> {
         let mut path = self.path.clone();
         path.push(format!("{}", file_id));
-        let file = file_open(path.to_str().unwrap(), true, &[0u8; 16]);
+        let file = file_open(path.to_str().unwrap(), true, self.integrity_only);
         Ok(Box::new(SgxFile { file }))
     }
 
@@ -81,7 +89,7 @@ impl Drop for SgxFile {
 
 /// Ecall functions to access SgxFile
 extern {
-    fn ecall_file_open(eid: sgx_enclave_id_t, retval: *mut size_t, path: *const u8, create: uint8_t, key: *const sgx_key_128bit_t) -> sgx_status_t;
+    fn ecall_file_open(eid: sgx_enclave_id_t, retval: *mut size_t, path: *const u8, create: uint8_t, integrity_only: i32) -> sgx_status_t;
     fn ecall_file_close(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t) -> sgx_status_t;
     fn ecall_file_flush(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t) -> sgx_status_t;
     fn ecall_file_read_at(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t, offset: size_t, buf: *mut uint8_t, len: size_t) -> sgx_status_t;
@@ -93,11 +101,11 @@ extern {
 static mut EID: sgx_enclave_id_t = 0;
 
 
-fn file_open(path: &str, create: bool, key: &sgx_key_128bit_t) -> usize {
+fn file_open(path: &str, create: bool, integrity_only: bool) -> usize {
     let cpath = format!("{}\0", path);
     let mut ret_val = 0;
     unsafe {
-        let ret = ecall_file_open(EID, &mut ret_val, cpath.as_ptr(), create as uint8_t, key);
+        let ret = ecall_file_open(EID, &mut ret_val, cpath.as_ptr(), create as uint8_t, integrity_only as i32);
         assert_eq!(ret, sgx_status_t::SGX_SUCCESS);
         assert_ne!(ret_val, 0);
     }

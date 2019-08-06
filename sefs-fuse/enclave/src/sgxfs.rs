@@ -10,6 +10,8 @@ extern {
 
     pub fn sgx_fopen_auto_key(filename: * const u8, mode: * const u8) -> SGX_FILE;
 
+    pub fn sgx_fopen_integrity_only(filename: * const u8, mode: * const u8) -> SGX_FILE;
+
     pub fn sgx_fwrite(ptr: * const u8,
                       size: usize,
                       count: usize,

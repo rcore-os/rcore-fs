@@ -52,6 +52,10 @@ struct Opt {
     /// Target directory
     #[structopt(parse(from_os_str))]
     dir: PathBuf,
+
+    /// Integrity-only mode
+    #[structopt(short = "i", long = "integrity-only")]
+    integrity_only: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -92,7 +96,8 @@ fn main() {
         Cmd::Unzip => false,
     };
 
-    let device = sgx_dev::SgxStorage::new(enclave.geteid(), &opt.image);
+    let device = sgx_dev::SgxStorage::new(enclave.geteid(),
+        &opt.image, opt.integrity_only);
     let fs = match create {
         true => {
             std::fs::create_dir(&opt.image)
