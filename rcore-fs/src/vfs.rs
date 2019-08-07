@@ -17,19 +17,29 @@ pub trait INode: Any + Sync + Send {
     fn poll(&self) -> Result<PollStatus>;
 
     /// Get metadata of the INode
-    fn metadata(&self) -> Result<Metadata>;
+    fn metadata(&self) -> Result<Metadata> {
+        Err(FsError::NotSupported)
+    }
 
     /// Set metadata of the INode
-    fn set_metadata(&self, metadata: &Metadata) -> Result<()>;
+    fn set_metadata(&self, metadata: &Metadata) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Sync all data and metadata
-    fn sync_all(&self) -> Result<()>;
+    fn sync_all(&self) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Sync data (not include metadata)
-    fn sync_data(&self) -> Result<()>;
+    fn sync_data(&self) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Resize the file
-    fn resize(&self, len: usize) -> Result<()>;
+    fn resize(&self, len: usize) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Create a new INode in the directory
     fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<dyn INode>> {
@@ -48,26 +58,40 @@ pub trait INode: Any + Sync + Send {
     }
 
     /// Create a hard link `name` to `other`
-    fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()>;
+    fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Delete a hard link `name`
-    fn unlink(&self, name: &str) -> Result<()>;
+    fn unlink(&self, name: &str) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Move INode `self/old_name` to `target/new_name`.
     /// If `target` equals `self`, do rename.
-    fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()>;
+    fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Find the INode `name` in the directory
-    fn find(&self, name: &str) -> Result<Arc<dyn INode>>;
+    fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
+        Err(FsError::NotSupported)
+    }
 
     /// Get the name of directory entry
-    fn get_entry(&self, id: usize) -> Result<String>;
+    fn get_entry(&self, id: usize) -> Result<String> {
+        Err(FsError::NotSupported)
+    }
 
     /// Control device
-    fn io_control(&self, cmd: u32, data: usize) -> Result<()>;
+    fn io_control(&self, cmd: u32, data: usize) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
 
     /// Get the file system of the INode
-    fn fs(&self) -> Arc<dyn FileSystem>;
+    fn fs(&self) -> Arc<dyn FileSystem> {
+        unimplemented!();
+    }
 
     /// This is used to implement dynamics cast.
     /// Simply return self in the implement of the function.
