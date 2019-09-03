@@ -1,6 +1,8 @@
-use alloc::boxed::Box;
-
 use rcore_fs::vfs::FsError;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::prelude::{String, ToString};
+use core::fmt::{Debug, Error, Formatter};
 
 #[cfg(any(test, feature = "std"))]
 pub use self::std_impl::*;
@@ -36,10 +38,38 @@ pub trait File: Send + Sync {
 
 /// The collection of all files in the FS.
 pub trait Storage: Send + Sync {
-    fn open(&self, file_id: usize) -> DevResult<Box<dyn File>>;
-    fn create(&self, file_id: usize) -> DevResult<Box<dyn File>>;
-    fn remove(&self, file_id: usize) -> DevResult<()>;
+    fn open(&self, file_id: &str) -> DevResult<Box<dyn File>>;
+    fn create(&self, file_id: &str) -> DevResult<Box<dyn File>>;
+    fn remove(&self, file_id: &str) -> DevResult<()>;
 }
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct SefsUuid([u8;16]);
+
+impl SefsUuid {
+    pub fn new(bytes: [u8; 16]) -> SefsUuid {
+        SefsUuid(bytes)
+    }
+}
+
+impl ToString for SefsUuid {
+    fn to_string(&self) -> String {
+        self.0.iter()
+            .map(|b| format!("{:02x}", b))
+            .collect()
+    }
+}
+
+impl Debug for SefsUuid {
+     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+         write!(f, "SefsUuid({})", self.to_string())
+     }
+}
+
+pub trait UuidProvider: Send + Sync {
+    fn generate_uuid(&self) -> SefsUuid;
+}
+
 
 #[derive(Debug)]
 pub struct DeviceError;

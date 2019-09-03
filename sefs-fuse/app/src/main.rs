@@ -32,9 +32,10 @@ use structopt::StructOpt;
 
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{zip_dir, unzip_dir};
-use rcore_fs_sefs as sefs;
 use rcore_fs::dev::std_impl::StdTimeProvider;
 use rcore_fs::vfs::FileSystem;
+use rcore_fs_sefs::dev::std_impl::StdUuidProvider;
+use rcore_fs_sefs as sefs;
 
 mod sgx_dev;
 mod enclave;
@@ -102,11 +103,11 @@ fn main() {
         true => {
             std::fs::create_dir(&opt.image)
                 .expect("failed to create dir for SEFS");
-            sefs::SEFS::create(Box::new(device), &StdTimeProvider)
+            sefs::SEFS::create(Box::new(device), &StdTimeProvider, &StdUuidProvider)
                 .expect("failed to create sefs")
         }
         false => {
-            sefs::SEFS::open(Box::new(device), &StdTimeProvider)
+            sefs::SEFS::open(Box::new(device), &StdTimeProvider, &StdUuidProvider)
                 .expect("failed to open sefs")
         }
     };

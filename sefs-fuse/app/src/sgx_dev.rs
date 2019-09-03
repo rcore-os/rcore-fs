@@ -23,23 +23,23 @@ impl SgxStorage {
 }
 
 impl Storage for SgxStorage {
-    fn open(&self, file_id: usize) -> DevResult<Box<File>> {
+    fn open(&self, file_id: &str) -> DevResult<Box<File>> {
         let mut path = self.path.clone();
-        path.push(format!("{}", file_id));
+        path.push(file_id);
         let file = file_open(path.to_str().unwrap(), false, self.integrity_only);
         Ok(Box::new(SgxFile { file }))
     }
 
-    fn create(&self, file_id: usize) -> DevResult<Box<File>> {
+    fn create(&self, file_id: &str) -> DevResult<Box<File>> {
         let mut path = self.path.clone();
-        path.push(format!("{}", file_id));
+        path.push(file_id);
         let file = file_open(path.to_str().unwrap(), true, self.integrity_only);
         Ok(Box::new(SgxFile { file }))
     }
 
-    fn remove(&self, file_id: usize) -> DevResult<()> {
+    fn remove(&self, file_id: &str) -> DevResult<()> {
         let mut path = self.path.to_path_buf();
-        path.push(format!("{}", file_id));
+        path.push(file_id);
         match remove_file(path) {
             Ok(_) => Ok(()),
             Err(_) => panic!(),

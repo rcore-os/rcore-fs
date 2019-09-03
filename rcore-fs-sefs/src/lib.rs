@@ -9,6 +9,7 @@ use alloc::{
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
+    prelude::ToString,
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -443,7 +444,9 @@ impl Drop for INodeImpl {
         if self.disk_inode.read().nlinks <= 0 {
             self.disk_inode.write().sync();
             self.fs.free_block(self.id);
-            self.fs.device.remove(self.id).unwrap();
+            let disk_filename = &self.disk_inode.read().disk_filename;
+            let filename = disk_filename.to_string();
+            self.fs.device.remove(filename.as_str()).unwrap();
         }
     }
 }
@@ -462,6 +465,8 @@ pub struct SEFS {
     meta_file: Box<dyn File>,
     /// Time provider
     time_provider: &'static dyn TimeProvider,
+    /// uuid provider
+    uuid_provider: &'static dyn UuidProvider,
     /// Pointer to self, used by INodes
     self_ptr: Weak<SEFS>,
 }
@@ -471,8 +476,9 @@ impl SEFS {
     pub fn open(
         device: Box<dyn Storage>,
         time_provider: &'static dyn TimeProvider,
+        uuid_provider: &'static dyn UuidProvider,
     ) -> vfs::Result<Arc<Self>> {
-        let meta_file = device.open(0)?;
+        let meta_file = device.open(METAFILE_NAME)?;
         let super_block = meta_file.load_struct::<SuperBlock>(BLKN_SUPER)?;
         if !super_block.check() {
             return Err(FsError::WrongFs);
@@ -498,6 +504,7 @@ impl SEFS {
             device,
             meta_file,
             time_provider,
+            uuid_provider,
             self_ptr: Weak::default(),
         }
         .wrap())
@@ -506,6 +513,7 @@ impl SEFS {
     pub fn create(
         device: Box<dyn Storage>,
         time_provider: &'static dyn TimeProvider,
+        uuid_provider: &'static dyn UuidProvider,
     ) -> vfs::Result<Arc<Self>> {
         let blocks = BLKBITS;
 
@@ -523,7 +531,7 @@ impl SEFS {
             }
             bitset
         };
-        let meta_file = device.create(0)?;
+        let meta_file = device.create(METAFILE_NAME)?;
         meta_file.set_len(blocks * BLKSIZE)?;
 
         let sefs = SEFS {
@@ -533,6 +541,7 @@ impl SEFS {
             device,
             meta_file,
             time_provider,
+            uuid_provider,
             self_ptr: Weak::default(),
         }
         .wrap();
@@ -599,12 +608,14 @@ impl SEFS {
         disk_inode: Dirty<DiskINode>,
         create: bool,
     ) -> Arc<INodeImpl> {
+        let filename = disk_inode.disk_filename.to_string();
+
         let inode = Arc::new(INodeImpl {
             id,
             disk_inode: RwLock::new(disk_inode),
             file: match create {
-                true => self.device.create(id).unwrap(),
-                false => self.device.open(id).unwrap(),
+                true => self.device.create(filename.as_str()).unwrap(),
+                false => self.device.open(filename.as_str()).unwrap(),
             },
             fs: self.self_ptr.upgrade().unwrap(),
         });
@@ -626,10 +637,12 @@ impl SEFS {
         let disk_inode = Dirty::new(self.meta_file.load_struct::<DiskINode>(id).unwrap());
         self._new_inode(id, disk_inode, false)
     }
+
     /// Create a new INode file
     fn new_inode(&self, type_: FileType, mode: u16) -> vfs::Result<Arc<INodeImpl>> {
         let id = self.alloc_block().ok_or(FsError::NoDeviceSpace)?;
         let time = self.time_provider.current_time().sec as u32;
+        let uuid = self.uuid_provider.generate_uuid();
         let disk_inode = Dirty::new_dirty(DiskINode {
             size: 0,
             type_,
@@ -641,6 +654,7 @@ impl SEFS {
             atime: time,
             mtime: time,
             ctime: time,
+            disk_filename: uuid,
         });
         Ok(self._new_inode(id, disk_inode, true))
     }
