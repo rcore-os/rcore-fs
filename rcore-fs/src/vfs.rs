@@ -96,16 +96,9 @@ pub trait INode: Any + Sync + Send {
     /// This is used to implement dynamics cast.
     /// Simply return self in the implement of the function.
     fn as_any_ref(&self) -> &dyn Any;
-}
-
-impl dyn INode {
-    /// Downcast the INode to specific struct
-    pub fn downcast_ref<T: INode>(&self) -> Option<&T> {
-        self.as_any_ref().downcast_ref::<T>()
-    }
 
     /// Get all directory entries as a Vec
-    pub fn list(&self) -> Result<Vec<String>> {
+    fn list(&self) -> Result<Vec<String>> {
         let info = self.metadata()?;
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);
@@ -118,12 +111,12 @@ impl dyn INode {
     }
 
     /// Lookup path from current INode, and do not follow symlinks
-    pub fn lookup(&self, path: &str) -> Result<Arc<dyn INode>> {
+    fn lookup(&self, path: &str) -> Result<Arc<dyn INode>> {
         self.lookup_follow(path, 0)
     }
 
     /// Lookup path from current INode, and follow symlinks at most `follow_times` times
-    pub fn lookup_follow(&self, path: &str, mut follow_times: usize) -> Result<Arc<dyn INode>> {
+    fn lookup_follow(&self, path: &str, mut follow_times: usize) -> Result<Arc<dyn INode>> {
         if self.metadata()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
@@ -174,6 +167,24 @@ impl dyn INode {
             }
         }
         Ok(result)
+    }
+
+    /// Read all contents into a vector
+    fn read_as_vec(&self) -> Result<Vec<u8>> {
+        let size = self.metadata()?.size;
+        let mut buf = Vec::with_capacity(size);
+        unsafe {
+            buf.set_len(size);
+        }
+        self.read_at(0, buf.as_mut_slice())?;
+        Ok(buf)
+    }
+}
+
+impl dyn INode {
+    /// Downcast the INode to specific struct
+    pub fn downcast_ref<T: INode>(&self) -> Option<&T> {
+        self.as_any_ref().downcast_ref::<T>()
     }
 }
 
