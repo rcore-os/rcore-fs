@@ -12,7 +12,7 @@ use alloc::{
 };
 use core::any::Any;
 use rcore_fs::vfs::*;
-use spin::RwLock;
+use spin::{RwLock, RwLockReadGuard};
 
 #[cfg(test)]
 mod tests;
@@ -33,8 +33,13 @@ type INodeId = usize;
 
 /// INode for `UnionFS`
 pub struct UnionINode {
+    /// INodes for each inner file systems
     inners: RwLock<Vec<VirtualINode>>,
+    /// Cache of merged directory entries.
+    cached_entries: RwLock<Vec<String>>,
+    /// Path from root INode
     path: Path,
+    /// Reference to `UnionFS`
     fs: Arc<dyn FileSystem>,
 }
 
@@ -86,6 +91,7 @@ impl UnionFS {
                     })
                     .collect(),
             ),
+            cached_entries: RwLock::new(Vec::new()),
             path: Path::new(),
             fs: self.self_ref.upgrade().unwrap(),
         })
@@ -131,17 +137,17 @@ impl VirtualINode {
 }
 
 impl UnionINode {
-    /// Get merged directory entries
-    fn entries(&self) -> Result<Vec<String>> {
+    /// Merge directory entries from several INodes
+    fn merge_entries(inners: &[VirtualINode]) -> Result<Vec<String>> {
         let mut entries = BTreeSet::<String>::new();
         // images
-        for inode in self.inners.read()[1..].iter().filter_map(|v| v.as_real()) {
+        for inode in inners[1..].iter().filter_map(|v| v.as_real()) {
             for name in inode.list()? {
                 entries.insert(name);
             }
         }
         // container
-        if let Some(inode) = self.inners.read()[0].as_real() {
+        if let Some(inode) = inners[0].as_real() {
             for name in inode.list()? {
                 if name.starts_with(".wh.") {
                     // whiteout
@@ -152,6 +158,22 @@ impl UnionINode {
             }
         }
         Ok(entries.into_iter().collect())
+    }
+
+    /// Get merged directory entries with cache `self.cached_entries`
+    fn entries(&self) -> Result<RwLockReadGuard<Vec<String>>> {
+        loop {
+            let guard = self.cached_entries.read();
+            // cache hit
+            if guard.len() > 0 {
+                return Ok(guard);
+            }
+            drop(guard);
+            // cache miss
+            let entries = Self::merge_entries(self.inners.read().as_slice())?;
+            *self.cached_entries.write() = entries;
+            // next turn will hit
+        }
     }
 
     /// Determine the upper INode
@@ -165,30 +187,46 @@ impl UnionINode {
             .clone()
     }
 
-    /// Create a copy of image if container INode is not exist
-    fn ensure_container_file_exist(&self) -> Result<()> {
-        if self.inode().metadata()?.type_ != FileType::File {
-            return Err(FsError::NotFile);
+    /// Ensure container INode exists in this `UnionINode` and return it.
+    ///
+    /// If the INode is not exist, first `mkdir -p` the base path.
+    /// Then if it is a file, create a copy of the image file;
+    /// If it is a directory, create an empty dir.
+    fn container_inode(&self) -> Result<Arc<dyn INode>> {
+        let type_ = self.inode().metadata()?.type_;
+        if type_ != FileType::File && type_ != FileType::Dir {
+            return Err(FsError::NotSupported);
         }
         let VirtualINode {
             mut last_inode,
             distance,
         } = self.inners.read()[0].clone();
         if distance == 0 {
-            return Ok(());
+            return Ok(last_inode);
         }
+        // create dirs to the base path
         for dir_name in &self.path.lastn(distance)[..distance - 1] {
             last_inode = last_inode.create(dir_name, FileType::Dir, 0o777)?;
         }
-        let file_name = &self.path.lastn(1)[0];
-        last_inode = last_inode.create(file_name, FileType::File, 0o777)?;
-        let data = self.inode().read_as_vec()?;
-        last_inode.write_at(0, &data)?;
+        // create file or dir
+        match type_ {
+            FileType::Dir => {
+                let dir_name = &self.path.lastn(1)[0];
+                last_inode = last_inode.create(dir_name, FileType::Dir, 0o777)?;
+            }
+            FileType::File => {
+                let file_name = &self.path.lastn(1)[0];
+                last_inode = last_inode.create(file_name, FileType::File, 0o777)?;
+                let data = self.inode().read_as_vec()?;
+                last_inode.write_at(0, &data)?;
+            }
+            _ => unreachable!(),
+        }
         self.inners.write()[0] = VirtualINode {
-            last_inode,
+            last_inode: last_inode.clone(),
             distance: 0,
         };
-        Ok(())
+        Ok(last_inode)
     }
 }
 
@@ -215,8 +253,7 @@ impl INode for UnionINode {
     }
 
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize> {
-        self.ensure_container_file_exist()?;
-        self.inode().write_at(offset, buf)
+        self.container_inode()?.write_at(offset, buf)
     }
 
     fn poll(&self) -> Result<PollStatus> {
@@ -248,12 +285,22 @@ impl INode for UnionINode {
     }
 
     fn resize(&self, len: usize) -> Result<()> {
-        self.ensure_container_file_exist()?;
-        self.inode().resize(len)
+        self.container_inode()?.resize(len)
     }
 
     fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<dyn INode>> {
-        unimplemented!()
+        if self.entries()?.contains(&String::from(name)) {
+            return Err(FsError::EntryExist);
+        }
+        let container_inode = self.container_inode()?;
+        match container_inode.unlink(&name.whiteout()) {
+            Ok(_) | Err(FsError::EntryNotFound) => {}
+            Err(e) => return Err(e),
+        }
+        let new_inode = container_inode.create(name, type_, mode)?;
+        // add `name` to entry cache
+        self.cached_entries.write().push(String::from(name));
+        Ok(new_inode)
     }
 
     fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
@@ -261,7 +308,24 @@ impl INode for UnionINode {
     }
 
     fn unlink(&self, name: &str) -> Result<()> {
-        unimplemented!()
+        if !self.entries()?.contains(&String::from(name)) {
+            return Err(FsError::EntryNotFound);
+        }
+        // if in container: remove directly
+        if let Some(inode) = self.inners.read()[0].as_real() {
+            match inode.find(name) {
+                Ok(_) => inode.unlink(name)?,
+                Err(FsError::EntryNotFound) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        // add whiteout to container
+        let wh_name = name.whiteout();
+        self.container_inode()?
+            .create(&wh_name, FileType::File, 0o777)?;
+        // remove `name` from entry cache
+        self.cached_entries.write().retain(|e| e != name);
+        Ok(())
     }
 
     fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()> {
@@ -269,20 +333,29 @@ impl INode for UnionINode {
     }
 
     fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
+        if !self.entries()?.contains(&String::from(name)) {
+            return Err(FsError::EntryNotFound);
+        }
         let inodes: Result<Vec<_>> = self.inners.read().iter().map(|x| x.find(name)).collect();
         Ok(Arc::new(UnionINode {
             inners: RwLock::new(inodes?),
+            cached_entries: RwLock::new(Vec::new()),
             path: self.path.with_next(name),
             fs: self.fs.clone(),
         }))
     }
 
     fn get_entry(&self, id: usize) -> Result<String> {
-        unimplemented!()
+        let entires = self.entries()?;
+        if id >= entires.len() {
+            Err(FsError::EntryNotFound)
+        } else {
+            Ok(entires[id].clone())
+        }
     }
 
     fn io_control(&self, cmd: u32, data: usize) -> Result<()> {
-        unimplemented!()
+        self.inode().io_control(cmd, data)
     }
 
     fn fs(&self) -> Arc<dyn FileSystem> {
@@ -320,5 +393,15 @@ impl Path {
     }
     fn lastn(&self, n: usize) -> &[String] {
         &self.0[self.0.len() - n..]
+    }
+}
+
+trait NameExt {
+    fn whiteout(&self) -> String;
+}
+
+impl NameExt for str {
+    fn whiteout(&self) -> String {
+        String::from(".wh.") + self
     }
 }

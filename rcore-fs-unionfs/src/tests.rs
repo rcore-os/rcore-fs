@@ -4,6 +4,7 @@ use crate::UnionFS;
 use alloc::sync::Arc;
 use rcore_fs::vfs::*;
 use rcore_fs_ramfs::RamFS;
+use std::collections::btree_set::BTreeSet;
 
 /// Create a UnionFS for test.
 /// Return root INode of (union, container, image).
@@ -60,19 +61,76 @@ fn read_file() -> Result<()> {
 
 #[test]
 fn write_file() -> Result<()> {
-    let (root, container_root, image_root) = create_sample()?;
+    let (root, croot, iroot) = create_sample()?;
     for path in &["file1", "file3", "dir/file4"] {
         const WRITE_DATA: &[u8] = b"I'm writing to container";
         root.lookup(path)?.write_at(0, WRITE_DATA)?;
-        assert_eq!(container_root.lookup(path)?.read_as_vec()?, WRITE_DATA);
-        assert_eq!(image_root.lookup(path)?.read_as_vec()?, b"image");
+        assert_eq!(croot.lookup(path)?.read_as_vec()?, WRITE_DATA);
+        assert_eq!(iroot.lookup(path)?.read_as_vec()?, b"image");
     }
     Ok(())
 }
 
 #[test]
 fn get_direntry() -> Result<()> {
-    unimplemented!()
+    let (root, croot, iroot) = create_sample()?;
+    let entries: BTreeSet<String> = root.list()?.into_iter().collect();
+    let expected: BTreeSet<String> = [".", "..", "file1", "file2", "file3", "dir"]
+        .iter()
+        .map(|&s| String::from(s))
+        .collect();
+    assert_eq!(entries, expected);
+    Ok(())
+}
+
+#[test]
+fn unlink() -> Result<()> {
+    let (root, croot, iroot) = create_sample()?;
+
+    root.unlink("file1")?;
+    assert!(root.lookup("file1").is_not_found());
+    assert!(croot.lookup("file1").is_not_found());
+    assert!(croot.lookup(".wh.file1").is_ok());
+    assert!(iroot.lookup("file1").is_ok());
+
+    root.unlink("file2")?;
+    assert!(root.lookup("file2").is_not_found());
+    assert!(croot.lookup("file2").is_not_found());
+
+    root.unlink("file3")?;
+    assert!(root.lookup("file3").is_not_found());
+    assert!(croot.lookup(".wh.file3").is_ok());
+    assert!(iroot.lookup("file3").is_ok());
+
+    root.lookup("dir")?.unlink("file4")?;
+    assert!(root.lookup("dir/file4").is_not_found());
+    assert!(croot.lookup("dir/.wh.file4").is_ok());
+    assert!(iroot.lookup("dir/file4").is_ok());
+
+    Ok(())
+}
+
+#[test]
+fn unlink_then_create() -> Result<()> {
+    let (root, croot, iroot) = create_sample()?;
+    root.unlink("file1")?;
+    let file1 = root.create("file1", FileType::File, MODE)?;
+    assert_eq!(file1.read_as_vec()?, b"");
+    assert!(croot.lookup(".wh.file1").is_not_found());
+    Ok(())
 }
 
 const MODE: u32 = 0o777;
+
+trait IsNotFound {
+    fn is_not_found(&self) -> bool;
+}
+
+impl<T> IsNotFound for Result<T> {
+    fn is_not_found(&self) -> bool {
+        match self {
+            Err(FsError::EntryNotFound) => true,
+            _ => false,
+        }
+    }
+}
