@@ -91,14 +91,18 @@ fn main() {
             std::fs::create_dir_all(&opt.image).unwrap();
             let device = sefs::dev::StdStorage::new(&opt.image);
             match create {
-                true => sefs::SEFS::create(Box::new(device),
-                                           &StdTimeProvider,
-                                           &StdUuidProvider)
-                    .expect("failed to create sefs"),
-                false => sefs::SEFS::open(Box::new(device),
-                                          &StdTimeProvider,
-                                          &StdUuidProvider)
-                    .expect("failed to open sefs"),
+                true => sefs::SEFS::create(
+                    Box::new(device),
+                    &StdTimeProvider,
+                    &StdUuidProvider,
+                )
+                .expect("failed to create sefs"),
+                false => sefs::SEFS::open(
+                    Box::new(device),
+                    &StdTimeProvider,
+                    &StdUuidProvider,
+                )
+                .expect("failed to open sefs"),
             }
         }
         "ramfs" => ramfs::RamFS::new(),

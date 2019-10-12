@@ -2,6 +2,8 @@ use sgx_types::*;
 use rcore_fs_sefs::dev::{File, Storage, DevResult, DeviceError};
 use std::path::*;
 use std::fs::remove_file;
+use rcore_fs_sefs::dev::{SefsMac};
+use std::mem;
 
 pub struct SgxStorage {
     path: PathBuf,
@@ -45,6 +47,9 @@ impl Storage for SgxStorage {
             Err(_) => panic!(),
         }
     }
+    fn is_integrity_only(&self) -> bool {
+        self.integrity_only
+    }
 }
 
 pub struct SgxFile {
@@ -79,6 +84,15 @@ impl File for SgxFile {
             e => panic!("flush {}", e),
         }
     }
+  
+    fn get_file_mac(&self) -> DevResult<SefsMac> {
+
+        let mut mac: sgx_aes_gcm_128bit_tag_t = [0u8;16];
+
+        file_get_mac(self.file, &mut mac);        
+        let sefs_mac = SefsMac(mac);
+        Ok(sefs_mac)
+  }
 }
 
 impl Drop for SgxFile {
@@ -95,11 +109,22 @@ extern {
     fn ecall_file_read_at(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t, offset: size_t, buf: *mut uint8_t, len: size_t) -> sgx_status_t;
     fn ecall_file_write_at(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t, offset: size_t, buf: *const uint8_t, len: size_t) -> sgx_status_t;
     fn ecall_file_set_len(eid: sgx_enclave_id_t, retval: *mut i32, fd: size_t, len: size_t) -> sgx_status_t;
+    fn ecall_file_get_mac(eid: sgx_enclave_id_t, retvat: *mut i32, fd: size_t, mac: *mut uint8_t, len: size_t) -> sgx_status_t;
 }
 
 /// Must be set when init enclave
 static mut EID: sgx_enclave_id_t = 0;
 
+fn file_get_mac(fd: usize, mac: *mut sgx_aes_gcm_128bit_tag_t) -> usize {
+
+    let mut ret_val = 0;
+    unsafe {
+        let len = mem::size_of::<sgx_aes_gcm_128bit_tag_t>();
+        let ret = ecall_file_get_mac(EID, &mut ret_val, fd,  mac as *mut u8, len);
+        assert_eq!(ret, sgx_status_t::SGX_SUCCESS);
+    }
+    ret_val as usize
+}
 
 fn file_open(path: &str, create: bool, integrity_only: bool) -> usize {
     let cpath = format!("{}\0", path);

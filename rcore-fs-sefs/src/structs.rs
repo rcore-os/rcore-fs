@@ -6,7 +6,7 @@ use core::mem::{size_of, size_of_val};
 use core::slice;
 use static_assertions::const_assert;
 
-use super::dev::SefsUuid;
+use super::dev::{SefsMac, SefsUuid};
 
 /// On-disk superblock
 #[repr(C)]
@@ -43,6 +43,7 @@ pub struct DiskINode {
     pub mtime: u32,
     pub ctime: u32,
     pub disk_filename: SefsUuid,
+    pub inode_mac: SefsMac,
 }
 
 /// On-disk file entry
@@ -54,7 +55,6 @@ pub struct DiskEntry {
     /// file name
     pub name: Str256,
 }
-
 
 #[repr(C)]
 pub struct Str256(pub [u8; 256]);

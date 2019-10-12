@@ -1,15 +1,15 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![feature(alloc)]
 
+#[macro_use]
 extern crate alloc;
-
 use alloc::{
     boxed::Box,
     collections::BTreeMap,
+    prelude::ToString,
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
-    prelude::ToString,
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
@@ -138,6 +138,25 @@ impl INodeImpl {
         let mut disk_inode = self.disk_inode.write();
         assert!(disk_inode.nlinks > 0);
         disk_inode.nlinks -= 1;
+    }
+    #[cfg(feature = "create_image")]
+    pub fn update_mac(&self) -> vfs::Result<()> {
+        if self.fs.device.is_integrity_only() {
+            self.disk_inode.write().inode_mac = self.file.get_file_mac().unwrap();
+            //println!("file_mac {:?}", self.disk_inode.read().inode_mac);
+            self.sync_all()?;
+        }
+        Ok(())
+    }
+    #[cfg(not(feature = "create_image"))]
+    fn check_integrity(&self) {
+        if self.fs.device.is_integrity_only() {
+            let inode_mac = &self.disk_inode.read().inode_mac;
+            let file_mac = self.file.get_file_mac().unwrap();
+            //info!("inode_mac {:?}, file_mac {:?}", inode_mac, file_mac);
+            let not_integrity = inode_mac.0 != file_mac.0;
+            assert!(!not_integrity, "FsError::NoIntegrity");
+        }
     }
 }
 
@@ -435,10 +454,13 @@ impl vfs::INode for INodeImpl {
         self
     }
 }
-
 impl Drop for INodeImpl {
     /// Auto sync when drop
     fn drop(&mut self) {
+        #[cfg(feature = "create_image")]
+        self.update_mac()
+            .expect("failed to update mac when dropping the SEFS Inode");
+
         self.sync_all()
             .expect("Failed to sync when dropping the SEFS Inode");
         if self.disk_inode.read().nlinks <= 0 {
@@ -534,6 +556,11 @@ impl SEFS {
         let meta_file = device.create(METAFILE_NAME)?;
         meta_file.set_len(blocks * BLKSIZE)?;
 
+        let mode = match device.is_integrity_only() {
+            true => 0o444,
+            false => 0o644,
+        };
+
         let sefs = SEFS {
             super_block: RwLock::new(Dirty::new_dirty(super_block)),
             free_map: RwLock::new(Dirty::new_dirty(free_map)),
@@ -545,9 +572,8 @@ impl SEFS {
             self_ptr: Weak::default(),
         }
         .wrap();
-
         // Init root INode
-        let root = sefs.new_inode(FileType::Dir, 0o777)?;
+        let root = sefs.new_inode(FileType::Dir, mode)?;
         assert_eq!(root.id, BLKN_ROOT);
         root.dirent_init(BLKN_ROOT)?;
         root.nlinks_inc(); //for .
@@ -619,6 +645,11 @@ impl SEFS {
             },
             fs: self.self_ptr.upgrade().unwrap(),
         });
+        #[cfg(not(feature = "create_image"))]
+        match create {
+            false => inode.check_integrity(),
+            _ => {},
+        };
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode
     }
@@ -655,6 +686,7 @@ impl SEFS {
             mtime: time,
             ctime: time,
             disk_filename: uuid,
+            inode_mac: Default::default(),
         });
         Ok(self._new_inode(id, disk_inode, true))
     }

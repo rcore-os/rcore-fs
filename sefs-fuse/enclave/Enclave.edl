@@ -45,5 +45,6 @@ enclave {
         public int ecall_file_read_at(size_t file, size_t offset, [out, size=len] uint8_t* buf, size_t len);
         public int ecall_file_write_at(size_t file, size_t offset, [in, size=len] const uint8_t* buf, size_t len);
         public int ecall_file_set_len(size_t file, size_t len);
+        public int ecall_file_get_mac(size_t file, [in, out, size=len] uint8_t* buf, size_t len);
     };
 };

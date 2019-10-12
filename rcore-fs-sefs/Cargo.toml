@@ -18,3 +18,8 @@ features = ["alloc"]
 
 [features]
 std = ["rcore-fs/std"]
+# Enable this feture when this crate is used for creating an SEFS image 
+# (e.g., sefs-fuse). When this feature is enabled, the MAC of an SEFS inode 
+# will be updated when the inode is closed. When this feature is disabled, 
+# the MAC of an SEFS inode will be checked when the inode is open.
+create_image = []

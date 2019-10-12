@@ -68,6 +68,12 @@ pub unsafe extern "C" fn ecall_file_open(path: *const u8, create: bool, _integri
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn ecall_file_get_mac(file: SGX_FILE, mac: *mut sgx_aes_gcm_128bit_tag_t) -> i32 {
+
+    sgx_fget_mac(file, mac) as i32
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn ecall_file_close(file: SGX_FILE) -> i32 {
     sgx_fclose(file)
 }

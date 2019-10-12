@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(non_camel_case_types)]
 
 extern {
     //
@@ -44,6 +45,8 @@ extern {
 
     pub fn sgx_fclear_cache(stream: SGX_FILE) -> i32;
 
+    pub fn sgx_fget_mac(stream: SGX_FILE, mac: * mut sgx_aes_gcm_128bit_tag_t) -> i32;
+
     #[link_name = "__errno_location"]
     fn errno_location() -> * mut i32;
 }
@@ -54,6 +57,9 @@ pub type SGX_KEY = [u8; 16];
 pub const SEEK_SET: i32 = 0;
 pub const SEEK_CUR: i32 = 1;
 pub const SEEK_END: i32 = 2;
+
+pub const SGX_AESGCM_MAC_SIZE: usize = 16;
+pub type sgx_aes_gcm_128bit_tag_t = [u8;SGX_AESGCM_MAC_SIZE];
 
 /// Get the last error number.
 pub fn errno() -> i32 {

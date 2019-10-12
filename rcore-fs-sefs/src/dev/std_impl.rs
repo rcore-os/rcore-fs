@@ -1,6 +1,6 @@
 #![cfg(any(test, feature = "std"))]
 
-use super::{DevResult, DeviceError, UuidProvider, SefsUuid};
+use super::{DevResult, DeviceError, SefsMac, SefsUuid, UuidProvider};
 use spin::Mutex;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -12,7 +12,7 @@ pub struct StdUuidProvider;
 
 impl UuidProvider for StdUuidProvider {
     fn generate_uuid(&self) -> SefsUuid {
-        let mut uuid: [u8;16] = Default::default();
+        let mut uuid: [u8; 16] = Default::default();
         let uuid_raw = Uuid::new_v4();
         uuid.copy_from_slice(uuid_raw.as_bytes());
         SefsUuid(uuid)
@@ -100,5 +100,8 @@ impl super::File for Mutex<File> {
         file.sync_all()?;
         Ok(())
     }
-}
 
+    fn get_file_mac(&self) -> DevResult<SefsMac> {
+        Ok(SefsMac::default())
+    }
+}
