@@ -120,6 +120,26 @@ fn unlink_then_create() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn link() -> Result<()> {
+    let (root, croot, iroot) = create_sample()?;
+
+    // create link
+    let dir = root.lookup("dir")?;
+    let file1 = root.lookup("file1")?;
+    dir.link("file1_link", &file1)?;
+
+    // read from new link
+    let file1_link = root.lookup("dir/file1_link")?;
+    assert_eq!(file1_link.read_as_vec()?, b"container");
+
+    // write then read from another link
+    const WRITE_DATA: &[u8] = b"I'm writing to container";
+    file1_link.write_at(0, WRITE_DATA)?;
+    assert_eq!(file1.read_as_vec()?, WRITE_DATA);
+    Ok(())
+}
+
 const MODE: u32 = 0o777;
 
 trait IsNotFound {

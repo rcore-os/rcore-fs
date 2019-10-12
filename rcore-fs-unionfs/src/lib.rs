@@ -232,6 +232,11 @@ impl UnionINode {
         };
         Ok(last_inode)
     }
+
+    /// Return container INode if it has
+    fn maybe_container_inode(&self) -> Option<Arc<dyn INode>> {
+        self.inners.read()[0].as_real().map(|v| v.clone())
+    }
 }
 
 impl FileSystem for UnionFS {
@@ -310,7 +315,19 @@ impl INode for UnionINode {
     }
 
     fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
-        unimplemented!()
+        if self.entries()?.contains(&String::from(name)) {
+            return Err(FsError::EntryExist);
+        }
+        let child = other
+            .downcast_ref::<UnionINode>()
+            .ok_or(FsError::NotSameFs)?;
+        // only support link inside container now
+        // TODO: link from image to container
+        let child = child.maybe_container_inode().ok_or(FsError::NotSupported)?;
+        self.container_inode()?.link(name, &child)?;
+        // add `name` to entry cache
+        self.cached_entries.write().push(String::from(name));
+        Ok(())
     }
 
     fn unlink(&self, name: &str) -> Result<()> {
@@ -409,10 +426,9 @@ impl Path {
     /// Hash path to get an INode ID
     fn hash(&self) -> usize {
         // hash function: Times33
-        self.0
-            .iter()
-            .flat_map(|s| s.bytes())
-            .fold(0usize, |h, b| h.overflowing_mul(33).0.overflowing_add(b as usize).0)
+        self.0.iter().flat_map(|s| s.bytes()).fold(0usize, |h, b| {
+            h.overflowing_mul(33).0.overflowing_add(b as usize).0
+        })
     }
 }
 

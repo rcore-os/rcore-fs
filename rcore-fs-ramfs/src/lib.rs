@@ -230,16 +230,14 @@ impl INode for LockedINode {
         let other = other
             .downcast_ref::<LockedINode>()
             .ok_or(FsError::NotSameFs)?;
-        // to make sure locking order.
-        let mut locks = lock_multiple(&[&self.0, &other.0]).into_iter();
 
-        let mut file = locks.next().unwrap();
-        let mut other_l = locks.next().unwrap();
+        let mut file = self.0.write();
+        let mut other = other.0.write();
 
         if file.extra.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
-        if other_l.extra.type_ == FileType::Dir {
+        if other.extra.type_ == FileType::Dir {
             return Err(FsError::IsDir);
         }
         if file.children.contains_key(name) {
@@ -247,8 +245,8 @@ impl INode for LockedINode {
         }
 
         file.children
-            .insert(String::from(name), other_l.this.upgrade().unwrap());
-        other_l.extra.nlinks += 1;
+            .insert(String::from(name), other.this.upgrade().unwrap());
+        other.extra.nlinks += 1;
         Ok(())
     }
 
@@ -326,11 +324,4 @@ impl INode for LockedINode {
     fn as_any_ref(&self) -> &dyn Any {
         self
     }
-}
-
-/// Lock INodes order by their inode id
-fn lock_multiple<'a>(locks: &[&'a RwLock<RamFSINode>]) -> Vec<RwLockWriteGuard<'a, RamFSINode>> {
-    let mut order: Vec<usize> = (0..locks.len()).collect();
-    order.sort_by_key(|&i| locks[i].read().extra.inode);
-    order.iter().map(|&i| locks[i].write()).collect()
 }
