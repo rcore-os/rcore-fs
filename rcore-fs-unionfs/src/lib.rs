@@ -1,4 +1,5 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
+#![feature(alloc)]
 
 extern crate alloc;
 #[macro_use]
@@ -33,6 +34,8 @@ type INodeId = usize;
 
 /// INode for `UnionFS`
 pub struct UnionINode {
+    /// INode ID
+    id: usize,
     /// INodes for each inner file systems
     inners: RwLock<Vec<VirtualINode>>,
     /// Cache of merged directory entries.
@@ -82,6 +85,7 @@ impl UnionFS {
     /// Strong type version of `root_inode`
     pub fn root_inode(&self) -> Arc<UnionINode> {
         Arc::new(UnionINode {
+            id: 0,
             inners: RwLock::new(
                 self.inners
                     .iter()
@@ -261,7 +265,9 @@ impl INode for UnionINode {
     }
 
     fn metadata(&self) -> Result<Metadata> {
-        self.inode().metadata()
+        let mut metadata = self.inode().metadata()?;
+        metadata.inode = self.id;
+        Ok(metadata)
     }
 
     fn set_metadata(&self, metadata: &Metadata) -> Result<()> {
@@ -337,10 +343,16 @@ impl INode for UnionINode {
             return Err(FsError::EntryNotFound);
         }
         let inodes: Result<Vec<_>> = self.inners.read().iter().map(|x| x.find(name)).collect();
+        let path = self.path.with_next(name);
         Ok(Arc::new(UnionINode {
+            // FIXME: Now INode ID is a hash of its path.
+            //        This can avoid conflict when union multiple filesystems,
+            //        but it's obviously wrong when the path changes.
+            //        We need to find a corrent way to allocate the INode ID.
+            id: path.hash(),
             inners: RwLock::new(inodes?),
             cached_entries: RwLock::new(Vec::new()),
-            path: self.path.with_next(name),
+            path,
             fs: self.fs.clone(),
         }))
     }
@@ -393,6 +405,14 @@ impl Path {
     }
     fn lastn(&self, n: usize) -> &[String] {
         &self.0[self.0.len() - n..]
+    }
+    /// Hash path to get an INode ID
+    fn hash(&self) -> usize {
+        // hash function: Times33
+        self.0
+            .iter()
+            .flat_map(|s| s.bytes())
+            .fold(0usize, |h, b| h.overflowing_mul(33).0.overflowing_add(b as usize).0)
     }
 }
 
