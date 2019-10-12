@@ -12,11 +12,13 @@ use alloc::{
     vec::Vec,
 };
 use core::any::Any;
+use core::sync::atomic::*;
 use rcore_fs::vfs::*;
 use spin::{RwLock, RwLockWriteGuard};
 
 pub struct RamFS {
     root: Arc<LockedINode>,
+    next_inode_id: AtomicUsize,
 }
 
 impl FileSystem for RamFS {
@@ -51,7 +53,7 @@ impl RamFS {
             content: Vec::new(),
             extra: Metadata {
                 dev: 0,
-                inode: new_inode_id(),
+                inode: 0,
                 size: 0,
                 blk_size: 0,
                 blocks: 0,
@@ -67,7 +69,10 @@ impl RamFS {
             },
             fs: Weak::default(),
         })));
-        let fs = Arc::new(RamFS { root });
+        let fs = Arc::new(RamFS {
+            root,
+            next_inode_id: AtomicUsize::new(1),
+        });
         let mut root = fs.root.0.write();
         root.parent = Arc::downgrade(&fs.root);
         root.this = Arc::downgrade(&fs.root);
@@ -76,6 +81,11 @@ impl RamFS {
             Arc::into_raw(root.this.upgrade().unwrap()) as *const RamFSINode as usize;
         drop(root);
         fs
+    }
+
+    /// Allocate an INode ID
+    fn alloc_inode_id(&self) -> usize {
+        self.next_inode_id.fetch_add(1, Ordering::SeqCst)
     }
 }
 
@@ -99,8 +109,8 @@ struct LockedINode(RwLock<RamFSINode>);
 impl INode for LockedINode {
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize> {
         let file = self.0.read();
-        if file.extra.type_ == FileType::Dir {
-            return Err(FsError::IsDir);
+        if file.extra.type_ != FileType::File {
+            return Err(FsError::NotFile);
         }
         let start = file.content.len().min(offset);
         let end = file.content.len().min(offset + buf.len());
@@ -111,8 +121,8 @@ impl INode for LockedINode {
 
     fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize> {
         let mut file = self.0.write();
-        if file.extra.type_ == FileType::Dir {
-            return Err(FsError::IsDir);
+        if file.extra.type_ != FileType::File {
+            return Err(FsError::NotFile);
         }
         let content = &mut file.content;
         if offset + buf.len() > content.len() {
@@ -125,8 +135,8 @@ impl INode for LockedINode {
 
     fn poll(&self) -> Result<PollStatus> {
         let file = self.0.read();
-        if file.extra.type_ == FileType::Dir {
-            return Err(FsError::IsDir);
+        if file.extra.type_ != FileType::File {
+            return Err(FsError::NotFile);
         }
         Ok(PollStatus {
             read: true,
@@ -163,12 +173,11 @@ impl INode for LockedINode {
 
     fn resize(&self, len: usize) -> Result<()> {
         let mut file = self.0.write();
-        if file.extra.type_ == FileType::File {
-            file.content.resize(len, 0);
-            Ok(())
-        } else {
-            Err(FsError::NotFile)
+        if file.extra.type_ != FileType::File {
+            return Err(FsError::NotFile);
         }
+        file.content.resize(len, 0);
+        Ok(())
     }
 
     fn create2(
@@ -179,43 +188,42 @@ impl INode for LockedINode {
         data: usize,
     ) -> Result<Arc<dyn INode>> {
         let mut file = self.0.write();
-        if file.extra.type_ == FileType::Dir {
-            if name == "." || name == ".." {
-                return Err(FsError::EntryExist);
-            }
-            if file.children.contains_key(name) {
-                return Err(FsError::EntryExist);
-            }
-            let temp_file = Arc::new(LockedINode(RwLock::new(RamFSINode {
-                parent: Weak::clone(&file.this),
-                this: Weak::default(),
-                children: BTreeMap::new(),
-                content: Vec::new(),
-                extra: Metadata {
-                    dev: 0,
-                    inode: new_inode_id(),
-                    size: 0,
-                    blk_size: 0,
-                    blocks: 0,
-                    atime: Timespec { sec: 0, nsec: 0 },
-                    mtime: Timespec { sec: 0, nsec: 0 },
-                    ctime: Timespec { sec: 0, nsec: 0 },
-                    type_,
-                    mode: mode as u16,
-                    nlinks: 1,
-                    uid: 0,
-                    gid: 0,
-                    rdev: data,
-                },
-                fs: Weak::clone(&file.fs),
-            })));
-            temp_file.0.write().this = Arc::downgrade(&temp_file);
-            file.children
-                .insert(String::from(name), Arc::clone(&temp_file));
-            Ok(temp_file)
-        } else {
-            Err(FsError::NotDir)
+        if file.extra.type_ != FileType::Dir {
+            return Err(FsError::NotDir);
         }
+        if name == "." || name == ".." {
+            return Err(FsError::EntryExist);
+        }
+        if file.children.contains_key(name) {
+            return Err(FsError::EntryExist);
+        }
+        let temp_file = Arc::new(LockedINode(RwLock::new(RamFSINode {
+            parent: Weak::clone(&file.this),
+            this: Weak::default(),
+            children: BTreeMap::new(),
+            content: Vec::new(),
+            extra: Metadata {
+                dev: 0,
+                inode: file.fs.upgrade().unwrap().alloc_inode_id(),
+                size: 0,
+                blk_size: 0,
+                blocks: 0,
+                atime: Timespec { sec: 0, nsec: 0 },
+                mtime: Timespec { sec: 0, nsec: 0 },
+                ctime: Timespec { sec: 0, nsec: 0 },
+                type_,
+                mode: mode as u16,
+                nlinks: 1,
+                uid: 0,
+                gid: 0,
+                rdev: data,
+            },
+            fs: Weak::clone(&file.fs),
+        })));
+        temp_file.0.write().this = Arc::downgrade(&temp_file);
+        file.children
+            .insert(String::from(name), Arc::clone(&temp_file));
+        Ok(temp_file)
     }
 
     fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
@@ -325,11 +333,4 @@ fn lock_multiple<'a>(locks: &[&'a RwLock<RamFSINode>]) -> Vec<RwLockWriteGuard<'
     let mut order: Vec<usize> = (0..locks.len()).collect();
     order.sort_by_key(|&i| locks[i].read().extra.inode);
     order.iter().map(|&i| locks[i].write()).collect()
-}
-
-/// Generate a new inode id
-fn new_inode_id() -> usize {
-    use core::sync::atomic::*;
-    static ID: AtomicUsize = AtomicUsize::new(1);
-    ID.fetch_add(1, Ordering::SeqCst)
 }
