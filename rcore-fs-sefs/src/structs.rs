@@ -6,6 +6,8 @@ use core::mem::{size_of, size_of_val};
 use core::slice;
 use static_assertions::const_assert;
 
+use super::dev::{SefsMac, SefsUuid};
+
 /// On-disk superblock
 #[repr(C)]
 #[derive(Debug)]
@@ -40,6 +42,8 @@ pub struct DiskINode {
     pub atime: u32,
     pub mtime: u32,
     pub ctime: u32,
+    pub disk_filename: SefsUuid,
+    pub inode_mac: SefsMac,
 }
 
 /// On-disk file entry
@@ -125,6 +129,8 @@ pub const BLKN_FREEMAP: BlockId = 1;
 pub const BLKBITS: usize = BLKSIZE * 8;
 /// size of a dirent used in the size field
 pub const DIRENT_SIZE: usize = 260;
+
+pub const METAFILE_NAME: &str = "metadata";
 
 /// file types
 #[repr(u16)]

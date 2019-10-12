@@ -53,13 +53,24 @@ macro_rules! try_io {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ecall_file_open(path: *const u8, create: bool, key: &SGX_KEY) -> *mut u8 {
+pub unsafe extern "C" fn ecall_file_open(path: *const u8, create: bool, _integrity_only: i32) -> *mut u8 {
+    let integrity_only = if _integrity_only != 0 { true } else { false };
     let mode = match create {
         true => "w+b\0",
         false => "r+b\0",
     };
-    let file = sgx_fopen(path, mode.as_ptr(), key);
+    let file = if !integrity_only {
+        sgx_fopen_auto_key(path, mode.as_ptr())
+    } else {
+        sgx_fopen_integrity_only(path, mode.as_ptr())
+    };
     file
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ecall_file_get_mac(file: SGX_FILE, mac: *mut sgx_aes_gcm_128bit_tag_t) -> i32 {
+
+    sgx_fget_mac(file, mac) as i32
 }
 
 #[no_mangle]

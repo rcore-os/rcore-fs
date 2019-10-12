@@ -3,14 +3,15 @@ use std::fs;
 use std::io::{Read, Write};
 use std::mem::uninitialized;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::str;
 use std::sync::Arc;
 
 use rcore_fs::vfs::{FileType, INode};
 
-const DEFAULT_MODE: u32 = 0o664;
 const BUF_SIZE: usize = 0x1000;
+const S_IMASK: u32 = 0o777;
 
 pub fn zip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>> {
     let dir = fs::read_dir(path)?;
@@ -19,8 +20,11 @@ pub fn zip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>>
         let name_ = entry.file_name();
         let name = name_.to_str().unwrap();
         let type_ = entry.file_type()?;
+        let metadata = fs::metadata(entry.path())?;
+        let mode = metadata.permissions().mode() & S_IMASK;
+        //println!("zip: name: {:?}, mode: {:#o}", entry.path(), mode);
         if type_.is_file() {
-            let inode = inode.create(name, FileType::File, DEFAULT_MODE)?;
+            let inode = inode.create(name, FileType::File, mode)?;
             let mut file = fs::File::open(entry.path())?;
             inode.resize(file.metadata()?.len() as usize)?;
             let mut buf: [u8; BUF_SIZE] = unsafe { uninitialized() };
@@ -32,11 +36,11 @@ pub fn zip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>>
                 offset += len;
             }
         } else if type_.is_dir() {
-            let inode = inode.create(name, FileType::Dir, DEFAULT_MODE)?;
+            let inode = inode.create(name, FileType::Dir, mode)?;
             zip_dir(entry.path().as_path(), inode)?;
         } else if type_.is_symlink() {
             let target = fs::read_link(entry.path())?;
-            let inode = inode.create(name, FileType::SymLink, DEFAULT_MODE)?;
+            let inode = inode.create(name, FileType::SymLink, mode)?;
             let data = target.as_os_str().as_bytes();
             inode.resize(data.len())?;
             inode.write_at(0, data)?;

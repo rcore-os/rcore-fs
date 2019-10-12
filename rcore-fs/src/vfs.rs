@@ -304,9 +304,12 @@ pub enum FsError {
     DeviceError,
     IOCTLError,
     NoDevice,
-    Again,         // E_AGAIN, when no data is available, never happens in fs
-    SymLoop,       // E_LOOP
-    Busy,          // E_BUSY
+    Again,       // E_AGAIN, when no data is available, never happens in fs
+    SymLoop,     // E_LOOP
+    Busy,        // E_BUSY
+    WrProtected, // E_RDOFS
+    NoIntegrity, // E_RDOFS
+    PermError,   // E_PERM
 }
 
 impl fmt::Display for FsError {

@@ -1,10 +1,23 @@
 #![cfg(any(test, feature = "std"))]
 
-use super::{DevResult, DeviceError};
+use super::{DevResult, DeviceError, SefsMac, SefsUuid, UuidProvider};
 use spin::Mutex;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+
+use uuid::Uuid;
+
+pub struct StdUuidProvider;
+
+impl UuidProvider for StdUuidProvider {
+    fn generate_uuid(&self) -> SefsUuid {
+        let mut uuid: [u8; 16] = Default::default();
+        let uuid_raw = Uuid::new_v4();
+        uuid.copy_from_slice(uuid_raw.as_bytes());
+        SefsUuid(uuid)
+    }
+}
 
 pub struct StdStorage {
     path: PathBuf,
@@ -20,16 +33,16 @@ impl StdStorage {
 }
 
 impl super::Storage for StdStorage {
-    fn open(&self, file_id: usize) -> DevResult<Box<dyn super::File>> {
+    fn open(&self, file_id: &str) -> DevResult<Box<dyn super::File>> {
         let mut path = self.path.to_path_buf();
-        path.push(format!("{}", file_id));
+        path.push(file_id);
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         Ok(Box::new(Mutex::new(file)))
     }
 
-    fn create(&self, file_id: usize) -> DevResult<Box<dyn super::File>> {
+    fn create(&self, file_id: &str) -> DevResult<Box<dyn super::File>> {
         let mut path = self.path.to_path_buf();
-        path.push(format!("{}", file_id));
+        path.push(file_id);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -38,9 +51,9 @@ impl super::Storage for StdStorage {
         Ok(Box::new(Mutex::new(file)))
     }
 
-    fn remove(&self, file_id: usize) -> DevResult<()> {
+    fn remove(&self, file_id: &str) -> DevResult<()> {
         let mut path = self.path.to_path_buf();
-        path.push(format!("{}", file_id));
+        path.push(file_id);
         remove_file(path)?;
         Ok(())
     }
@@ -86,5 +99,9 @@ impl super::File for Mutex<File> {
         let file = self.lock();
         file.sync_all()?;
         Ok(())
+    }
+
+    fn get_file_mac(&self) -> DevResult<SefsMac> {
+        Ok(SefsMac::default())
     }
 }

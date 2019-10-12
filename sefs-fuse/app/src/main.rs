@@ -33,8 +33,10 @@ use structopt::StructOpt;
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{zip_dir, unzip_dir};
 use rcore_fs_sefs as sefs;
+use rcore_fs_sefs::INodeImpl;
+use rcore_fs_sefs::dev::std_impl::StdUuidProvider;
 use rcore_fs::dev::std_impl::StdTimeProvider;
-use rcore_fs::vfs::FileSystem;
+use rcore_fs::vfs::{FileSystem};
 
 mod sgx_dev;
 mod enclave;
@@ -52,6 +54,10 @@ struct Opt {
     /// Target directory
     #[structopt(parse(from_os_str))]
     dir: PathBuf,
+
+    /// Integrity-only mode
+    #[structopt(short = "i", long = "integrity-only")]
+    integrity_only: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -92,16 +98,22 @@ fn main() {
         Cmd::Unzip => false,
     };
 
-    let device = sgx_dev::SgxStorage::new(enclave.geteid(), &opt.image);
+    let device = sgx_dev::SgxStorage::new(enclave.geteid(),
+        &opt.image, opt.integrity_only);
     let fs = match create {
         true => {
             std::fs::create_dir(&opt.image)
                 .expect("failed to create dir for SEFS");
-            sefs::SEFS::create(Box::new(device), &StdTimeProvider)
+            sefs::SEFS::create(Box::new(device),
+                               &StdTimeProvider,
+                               &StdUuidProvider)
                 .expect("failed to create sefs")
         }
         false => {
-            sefs::SEFS::open(Box::new(device), &StdTimeProvider)
+            sefs::SEFS::open(Box::new(device),
+                             &StdTimeProvider,
+                             &StdUuidProvider,
+                             )
                 .expect("failed to open sefs")
         }
     };
@@ -111,7 +123,8 @@ fn main() {
                 .expect("failed to mount fs");
         }
         Cmd::Zip => {
-            zip_dir(&opt.dir, fs.root_inode())
+            let root_inode = fs.root_inode();
+            zip_dir(&opt.dir, root_inode)
                 .expect("failed to zip fs");
         }
         Cmd::Unzip => {
