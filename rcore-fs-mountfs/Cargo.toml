@@ -8,7 +8,6 @@ edition = "2018"
 rcore-fs = { path = "../rcore-fs" }
 spin = "0.5"
 log = "0.4"
-lazy_static = { version = "1.3", features = ["spin_no_std"] }
 
 [dev-dependencies]
 rcore-fs-ramfs = { path = "../rcore-fs-ramfs" }
