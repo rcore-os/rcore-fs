@@ -28,7 +28,6 @@
 
 #![crate_name = "helloworldsampleenclave"]
 #![crate_type = "staticlib"]
-
 #![no_std]
 #![feature(lang_items)]
 
@@ -39,21 +38,27 @@ extern crate log;
 
 use self::sgxfs::*;
 
-mod sgxfs;
 mod lang;
+mod sgxfs;
 
 /// Helper macro to reply error when IO fails
 macro_rules! try_io {
-    ($expr:expr) => (match $expr {
-        errno if (errno as i32) == -1 => {
-            return errno as i32;
+    ($expr:expr) => {
+        match $expr {
+            errno if (errno as i32) == -1 => {
+                return errno as i32;
+            }
+            val => val,
         }
-        val => val,
-    });
+    };
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ecall_file_open(path: *const u8, create: bool, _integrity_only: i32) -> *mut u8 {
+pub unsafe extern "C" fn ecall_file_open(
+    path: *const u8,
+    create: bool,
+    _integrity_only: i32,
+) -> *mut u8 {
     let integrity_only = if _integrity_only != 0 { true } else { false };
     let mode = match create {
         true => "w+b\0",
@@ -68,8 +73,10 @@ pub unsafe extern "C" fn ecall_file_open(path: *const u8, create: bool, _integri
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ecall_file_get_mac(file: SGX_FILE, mac: *mut sgx_aes_gcm_128bit_tag_t) -> i32 {
-
+pub unsafe extern "C" fn ecall_file_get_mac(
+    file: SGX_FILE,
+    mac: *mut sgx_aes_gcm_128bit_tag_t,
+) -> i32 {
     sgx_fget_mac(file, mac) as i32
 }
 
@@ -84,13 +91,23 @@ pub unsafe extern "C" fn ecall_file_flush(file: SGX_FILE) -> i32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ecall_file_read_at(file: SGX_FILE, offset: usize, buf: *mut u8, len: usize) -> i32 {
+pub unsafe extern "C" fn ecall_file_read_at(
+    file: SGX_FILE,
+    offset: usize,
+    buf: *mut u8,
+    len: usize,
+) -> i32 {
     try_io!(sgx_fseek(file, offset as i64, SEEK_SET));
     sgx_fread(buf, 1, len, file) as i32
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ecall_file_write_at(file: SGX_FILE, offset: usize, buf: *const u8, len: usize) -> i32 {
+pub unsafe extern "C" fn ecall_file_write_at(
+    file: SGX_FILE,
+    offset: usize,
+    buf: *const u8,
+    len: usize,
+) -> i32 {
     try_io!(sgx_fseek(file, offset as i64, SEEK_SET));
     sgx_fwrite(buf, 1, len, file) as i32
 }
