@@ -352,7 +352,24 @@ impl INode for UnionINode {
     }
 
     fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()> {
-        unimplemented!()
+        // ensure 'old_name' exists in container
+        // copy from image on necessary
+        self.find(old_name)?
+            .downcast_ref::<UnionINode>()
+            .unwrap()
+            .container_inode()?;
+        let target = target
+            .downcast_ref::<UnionINode>()
+            .ok_or(FsError::NotSameFs)?;
+        let this = self.maybe_container_inode().unwrap();
+        this.move_(old_name, &target.container_inode()?, new_name)?;
+        // add whiteout to container
+        this.create(&old_name.whiteout(), FileType::File, 0o777)?;
+        // remove `old_name` from entry cache
+        self.cached_entries.write().retain(|e| e != old_name);
+        // add `new_name` to target's entry cache
+        target.cached_entries.write().push(String::from(new_name));
+        Ok(())
     }
 
     fn find(&self, name: &str) -> Result<Arc<dyn INode>> {

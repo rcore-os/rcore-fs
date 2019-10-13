@@ -121,8 +121,8 @@ fn unlink_then_create() -> Result<()> {
 }
 
 #[test]
-fn link() -> Result<()> {
-    let (root, croot, iroot) = create_sample()?;
+fn link_container() -> Result<()> {
+    let (root, _, _) = create_sample()?;
 
     // create link
     let dir = root.lookup("dir")?;
@@ -137,6 +137,56 @@ fn link() -> Result<()> {
     const WRITE_DATA: &[u8] = b"I'm writing to container";
     file1_link.write_at(0, WRITE_DATA)?;
     assert_eq!(file1.read_as_vec()?, WRITE_DATA);
+    Ok(())
+}
+
+#[test]
+#[ignore] // FIXME: support link from image to container
+fn link_image() -> Result<()> {
+    let (root, _, _) = create_sample()?;
+
+    // create link
+    let dir = root.lookup("dir")?;
+    let file3 = root.lookup("file3")?;
+    dir.link("file3_link", &file3)?;
+
+    // read from new link
+    let file3_link = root.lookup("dir/file3_link")?;
+    assert_eq!(file3_link.read_as_vec()?, b"container");
+
+    // write then read from another link
+    const WRITE_DATA: &[u8] = b"I'm writing to container";
+    file3_link.write_at(0, WRITE_DATA)?;
+    assert_eq!(file3.read_as_vec()?, WRITE_DATA);
+    Ok(())
+}
+
+#[test]
+fn move_container() -> Result<()> {
+    let (root, croot, _) = create_sample()?;
+
+    let dir = root.lookup("dir")?;
+    root.move_("file1", &dir, "file1")?;
+
+    assert!(root.lookup("file1").is_not_found());
+    assert!(root.lookup("dir/file1").is_ok());
+    assert!(croot.lookup("file1").is_not_found());
+    assert!(croot.lookup(".wh.file1").is_ok());
+    assert!(croot.lookup("dir/file1").is_ok());
+    Ok(())
+}
+
+#[test]
+fn move_image() -> Result<()> {
+    let (root, croot, _) = create_sample()?;
+
+    let dir = root.lookup("dir")?;
+    root.move_("file3", &dir, "file3")?;
+
+    assert!(root.lookup("file3").is_not_found());
+    assert!(root.lookup("dir/file3").is_ok());
+    assert!(croot.lookup(".wh.file3").is_ok());
+    assert!(croot.lookup("dir/file3").is_ok());
     Ok(())
 }
 
