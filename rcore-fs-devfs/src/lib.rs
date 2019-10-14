@@ -35,7 +35,7 @@ impl FileSystem for DevFS {
 
     fn root_inode(&self) -> Arc<dyn INode> {
         Arc::new(DevRootINode {
-            fs: self.self_ref.upgrade().unwrap()
+            fs: self.self_ref.upgrade().unwrap(),
         })
     }
 
@@ -58,7 +58,8 @@ impl DevFS {
         DevFS {
             devs: RwLock::new(BTreeMap::new()),
             self_ref: Weak::default(),
-        }.wrap()
+        }
+        .wrap()
     }
     pub fn add(&self, name: &str, dev: Arc<dyn INode>) -> Result<()> {
         let mut devs = self.devs.write();
@@ -70,8 +71,7 @@ impl DevFS {
     }
     pub fn remove(&self, name: &str) -> Result<()> {
         let mut devs = self.devs.write();
-        devs.remove(name)
-            .ok_or(FsError::EntryNotFound)?;
+        devs.remove(name).ok_or(FsError::EntryNotFound)?;
         Ok(())
     }
     /// Wrap pure DevFS with Arc
@@ -142,12 +142,7 @@ impl INode for DevRootINode {
         Err(FsError::IsDir)
     }
 
-    fn create(
-        &self,
-        _name: &str,
-        _type_: FileType,
-        _mode: u32
-    ) -> Result<Arc<dyn INode>> {
+    fn create(&self, _name: &str, _type_: FileType, _mode: u32) -> Result<Arc<dyn INode>> {
         Err(FsError::NotSupported)
     }
 
@@ -166,11 +161,13 @@ impl INode for DevRootINode {
     fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
         match name {
             "." | ".." => Ok(self.fs.root_inode()),
-            name => {
-                self.fs.devs.read().get(name)
-                    .map(|d| d.clone())
-                    .ok_or(FsError::EntryNotFound)
-            }
+            name => self
+                .fs
+                .devs
+                .read()
+                .get(name)
+                .map(|d| d.clone())
+                .ok_or(FsError::EntryNotFound),
         }
     }
 

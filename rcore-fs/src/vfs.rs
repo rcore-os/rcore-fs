@@ -22,7 +22,7 @@ pub trait INode: Any + Sync + Send {
     }
 
     /// Set metadata of the INode
-    fn set_metadata(&self, metadata: &Metadata) -> Result<()> {
+    fn set_metadata(&self, _metadata: &Metadata) -> Result<()> {
         Err(FsError::NotSupported)
     }
 
@@ -37,7 +37,7 @@ pub trait INode: Any + Sync + Send {
     }
 
     /// Resize the file
-    fn resize(&self, len: usize) -> Result<()> {
+    fn resize(&self, _len: usize) -> Result<()> {
         Err(FsError::NotSupported)
     }
 
@@ -58,33 +58,33 @@ pub trait INode: Any + Sync + Send {
     }
 
     /// Create a hard link `name` to `other`
-    fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
+    fn link(&self, _name: &str, _other: &Arc<dyn INode>) -> Result<()> {
         Err(FsError::NotSupported)
     }
 
     /// Delete a hard link `name`
-    fn unlink(&self, name: &str) -> Result<()> {
+    fn unlink(&self, _name: &str) -> Result<()> {
         Err(FsError::NotSupported)
     }
 
     /// Move INode `self/old_name` to `target/new_name`.
     /// If `target` equals `self`, do rename.
-    fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()> {
+    fn move_(&self, _old_name: &str, _target: &Arc<dyn INode>, _new_name: &str) -> Result<()> {
         Err(FsError::NotSupported)
     }
 
     /// Find the INode `name` in the directory
-    fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
+    fn find(&self, _name: &str) -> Result<Arc<dyn INode>> {
         Err(FsError::NotSupported)
     }
 
     /// Get the name of directory entry
-    fn get_entry(&self, id: usize) -> Result<String> {
+    fn get_entry(&self, _id: usize) -> Result<String> {
         Err(FsError::NotSupported)
     }
 
     /// Control device
-    fn io_control(&self, cmd: u32, data: usize) -> Result<()> {
+    fn io_control(&self, _cmd: u32, _data: usize) -> Result<()> {
         Err(FsError::NotSupported)
     }
 
@@ -293,9 +293,9 @@ pub enum FsError {
     DeviceError,
     IOCTLError,
     NoDevice,
-    Again,         // E_AGAIN, when no data is available, never happens in fs
-    SymLoop,       // E_LOOP
-    Busy,          // E_BUSY
+    Again,   // E_AGAIN, when no data is available, never happens in fs
+    SymLoop, // E_LOOP
+    Busy,    // E_BUSY
 }
 
 impl fmt::Display for FsError {
