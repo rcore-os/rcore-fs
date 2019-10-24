@@ -151,6 +151,9 @@ impl dyn INode {
                     rest_path = String::from(&rest_path[pos + 1..]);
                 }
             };
+            if name == "" {
+                continue;
+            }
             let inode = result.find(&name)?;
             // Handle symlink
             if inode.metadata()?.type_ == FileType::SymLink && follow_times > 0 {
