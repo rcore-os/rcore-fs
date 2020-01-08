@@ -1,6 +1,8 @@
 # rcore-fs
 
+[![Actions Status](https://github.com/rcore-os/rcore-fs/workflows/CI/badge.svg)](https://github.com/rcore-os/rcore-fs/actions)
 [![Build Status](https://travis-ci.org/rcore-os/rcore-fs.svg?branch=master)](https://travis-ci.org/rcore-os/rcore-fs)
+[![Coverage Status](https://coveralls.io/repos/github/rcore-os/rcore-fs/badge.svg?branch=master)](https://coveralls.io/github/rcore-os/rcore-fs?branch=master)
 
 The file system module for [rCore OS](https://github.com/rcore-os/rCore).
 
