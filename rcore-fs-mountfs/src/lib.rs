@@ -1,5 +1,5 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(alloc)]
+#![allow(invalid_value)]
 
 extern crate alloc;
 #[macro_use]
@@ -13,7 +13,7 @@ use alloc::{
     sync::{Arc, Weak},
 };
 use core::any::Any;
-use core::mem::uninitialized;
+use core::mem::MaybeUninit;
 use rcore_fs::vfs::*;
 use spin::RwLock;
 
@@ -40,7 +40,7 @@ lazy_static! {
     // If you don't touch it you will not break it.
     // But in fact you should detect file operations (e.g. fstat) on virtual files and prevent them.
     static ref ANONYMOUS_FS: Arc<MountFS>
-        = Arc::new(unsafe { uninitialized() });
+        = Arc::new(unsafe { MaybeUninit::uninit().assume_init() });
 }
 
 /// INode for `MountFS`

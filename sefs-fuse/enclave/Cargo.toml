@@ -1,11 +1,11 @@
 [package]
-name = "Helloworldsampleenclave"
+name = "Sefsfuseenclave"
 version = "1.0.0"
-authors = ["Baidu"]
+authors = ["Antfin"]
 edition = "2018"
 
 [lib]
-name = "helloworldsampleenclave"
+name = "sefsfuseenclave"
 crate-type = ["staticlib"]
 
 [features]
@@ -13,5 +13,5 @@ default = []
 
 [dependencies]
 log = "0.4"
-#sgx_types = "=1.0.6"
-#sgx_tstd = "=1.0.6"
+#sgx_types = "=1.1.0"
+#sgx_tstd = "=1.1.0"

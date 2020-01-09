@@ -1,19 +1,17 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(alloc)]
 
 #[macro_use]
 extern crate alloc;
 use alloc::{
     boxed::Box,
     collections::BTreeMap,
-    prelude::ToString,
-    string::String,
+    string::{String, ToString},
     sync::{Arc, Weak},
     vec::Vec,
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
-use core::mem::uninitialized;
+use core::mem::MaybeUninit;
 
 use bitvec::BitVec;
 use rcore_fs::dev::TimeProvider;
@@ -38,7 +36,7 @@ impl dyn File {
         self.write_all_at(buf, id * BLKSIZE)
     }
     fn read_direntry(&self, id: usize) -> DevResult<DiskEntry> {
-        let mut direntry: DiskEntry = unsafe { uninitialized() };
+        let mut direntry: DiskEntry = unsafe { MaybeUninit::uninit().assume_init() };
         self.read_exact_at(direntry.as_buf_mut(), DIRENT_SIZE * id)?;
         Ok(direntry)
     }
@@ -47,7 +45,7 @@ impl dyn File {
     }
     /// Load struct `T` from given block in device
     fn load_struct<T: AsBuf>(&self, id: BlockId) -> DevResult<T> {
-        let mut s: T = unsafe { uninitialized() };
+        let mut s: T = unsafe { MaybeUninit::uninit().assume_init() };
         self.read_block(id, s.as_buf_mut())?;
         Ok(s)
     }

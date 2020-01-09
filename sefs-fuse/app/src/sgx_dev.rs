@@ -1,5 +1,5 @@
 use sgx_types::*;
-use rcore_fs_sefs::dev::{File, Storage, DevResult, DeviceError};
+use rcore_fs_sefs::dev::{File, Storage, DevResult};
 use std::path::*;
 use std::fs::remove_file;
 use rcore_fs_sefs::dev::{SefsMac};
@@ -25,14 +25,14 @@ impl SgxStorage {
 }
 
 impl Storage for SgxStorage {
-    fn open(&self, file_id: &str) -> DevResult<Box<File>> {
+    fn open(&self, file_id: &str) -> DevResult<Box<dyn File>> {
         let mut path = self.path.clone();
         path.push(file_id);
         let file = file_open(path.to_str().unwrap(), false, self.integrity_only);
         Ok(Box::new(SgxFile { file }))
     }
 
-    fn create(&self, file_id: &str) -> DevResult<Box<File>> {
+    fn create(&self, file_id: &str) -> DevResult<Box<dyn File>> {
         let mut path = self.path.clone();
         path.push(file_id);
         let file = file_open(path.to_str().unwrap(), true, self.integrity_only);

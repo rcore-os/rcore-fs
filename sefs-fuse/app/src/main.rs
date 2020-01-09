@@ -33,7 +33,6 @@ use structopt::StructOpt;
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{zip_dir, unzip_dir};
 use rcore_fs_sefs as sefs;
-use rcore_fs_sefs::INodeImpl;
 use rcore_fs_sefs::dev::std_impl::StdUuidProvider;
 use rcore_fs::dev::std_impl::StdTimeProvider;
 use rcore_fs::vfs::{FileSystem};

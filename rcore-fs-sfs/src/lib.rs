@@ -1,6 +1,4 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(alloc)]
-#![feature(const_str_len)]
 
 extern crate alloc;
 #[macro_use]
@@ -15,7 +13,7 @@ use alloc::{
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
-use core::mem::uninitialized;
+use core::mem::MaybeUninit;
 
 use bitvec::BitVec;
 use spin::RwLock;
@@ -48,7 +46,7 @@ trait DeviceExt: Device {
     }
     /// Load struct `T` from given block in device
     fn load_struct<T: AsBuf>(&self, id: BlockId) -> vfs::Result<T> {
-        let mut s: T = unsafe { uninitialized() };
+        let mut s: T = unsafe { MaybeUninit::uninit().assume_init() };
         self.read_block(id, 0, s.as_buf_mut())?;
         Ok(s)
     }
@@ -187,7 +185,7 @@ impl INodeImpl {
         Ok(())
     }
     fn read_direntry(&self, id: usize) -> vfs::Result<DiskEntry> {
-        let mut direntry: DiskEntry = unsafe { uninitialized() };
+        let mut direntry: DiskEntry = unsafe { MaybeUninit::uninit().assume_init() };
         self._read_at(DIRENT_SIZE * id, direntry.as_buf_mut())?;
         Ok(direntry)
     }
