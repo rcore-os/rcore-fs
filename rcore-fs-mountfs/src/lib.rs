@@ -1,11 +1,8 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(alloc)]
 
 extern crate alloc;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate lazy_static;
 
 use alloc::{
     collections::BTreeMap,
@@ -13,7 +10,6 @@ use alloc::{
     sync::{Arc, Weak},
 };
 use core::any::Any;
-use core::mem::uninitialized;
 use rcore_fs::vfs::*;
 use spin::RwLock;
 
@@ -33,15 +29,6 @@ pub struct MountFS {
 }
 
 type INodeId = usize;
-
-lazy_static! {
-    // XXX: what's the meaning?
-    // The unsafe filesystem for Stdin, Stdout, anonymous pipe and so on.
-    // If you don't touch it you will not break it.
-    // But in fact you should detect file operations (e.g. fstat) on virtual files and prevent them.
-    static ref ANONYMOUS_FS: Arc<MountFS>
-        = Arc::new(unsafe { uninitialized() });
-}
 
 /// INode for `MountFS`
 pub struct MNode {
@@ -137,20 +124,6 @@ impl MNode {
     fn is_root(&self) -> bool {
         self.inode.fs().root_inode().metadata().unwrap().inode
             == self.inode.metadata().unwrap().inode
-    }
-
-    /// Creates an anonymous inode.
-    /// Should not be used as a location at any time, or be totally released at any time.
-    pub unsafe fn anonymous_inode(inode: Arc<dyn INode>) -> Arc<MNode> {
-        MNode {
-            inode,
-            vfs: ANONYMOUS_FS.clone(),
-            self_ref: Weak::default(),
-        }
-        .wrap()
-    }
-    pub unsafe fn is_anonymous(&self) -> bool {
-        Arc::ptr_eq(&self.vfs, &ANONYMOUS_FS)
     }
 
     /// Strong type version of `create()`
