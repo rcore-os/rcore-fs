@@ -22,6 +22,7 @@ Specific file systems:
 * `rcore-fs-ramfs`: RAM based FS
 * `rcore-fs-mountfs`: Mountable FS wrapper
 * `rcore-fs-devfs`: Device file system
+* `rcore-fs-hostfs`: File system at host OS
 
 Utilities:
 

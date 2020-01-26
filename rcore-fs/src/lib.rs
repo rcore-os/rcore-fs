@@ -7,3 +7,6 @@ pub mod dirty;
 pub mod file;
 pub mod util;
 pub mod vfs;
+
+#[cfg(any(test, feature = "std"))]
+mod std;

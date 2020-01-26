@@ -313,9 +313,6 @@ impl From<DevError> for FsError {
     }
 }
 
-#[cfg(any(test, feature = "std"))]
-impl std::error::Error for FsError {}
-
 pub type Result<T> = result::Result<T, FsError>;
 
 /// Abstract file system
