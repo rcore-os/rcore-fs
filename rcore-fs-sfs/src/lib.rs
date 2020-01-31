@@ -15,7 +15,7 @@ use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::MaybeUninit;
 
-use bitvec::BitVec;
+use bitvec::prelude::*;
 use spin::RwLock;
 
 use rcore_fs::dev::Device;
@@ -724,7 +724,7 @@ pub struct SimpleFileSystem {
     /// on-disk superblock
     super_block: RwLock<Dirty<SuperBlock>>,
     /// blocks in use are mared 0
-    free_map: RwLock<Dirty<BitVec>>,
+    free_map: RwLock<Dirty<BitVec<Lsb0, u8>>>,
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
@@ -982,7 +982,7 @@ trait BitsetAlloc {
     fn alloc(&mut self) -> Option<usize>;
 }
 
-impl BitsetAlloc for BitVec {
+impl BitsetAlloc for BitVec<Lsb0, u8> {
     fn alloc(&mut self) -> Option<usize> {
         // TODO: more efficient
         let id = (0..self.len()).find(|&i| self[i]);
@@ -993,7 +993,7 @@ impl BitsetAlloc for BitVec {
     }
 }
 
-impl AsBuf for BitVec {
+impl AsBuf for BitVec<Lsb0, u8> {
     fn as_buf(&self) -> &[u8] {
         self.as_ref()
     }
