@@ -62,7 +62,6 @@ impl super::Storage for StdStorage {
 impl From<std::io::Error> for DeviceError {
     fn from(e: std::io::Error) -> Self {
         panic!("{:?}", e);
-        DeviceError
     }
 }
 

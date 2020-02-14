@@ -20,8 +20,8 @@ macro_rules! impl_inode {
     };
 }
 
-mod zero;
 mod null;
+mod zero;
 
-pub use self::zero::*;
 pub use self::null::*;
+pub use self::zero::*;

@@ -1,5 +1,4 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(alloc)]
 
 #[macro_use]
 extern crate alloc;
@@ -13,9 +12,9 @@ use alloc::{
 };
 use core::any::Any;
 use core::fmt::{Debug, Error, Formatter};
-use core::mem::uninitialized;
+use core::mem::MaybeUninit;
 
-use bitvec::BitVec;
+use bitvec::prelude::*;
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
@@ -38,7 +37,7 @@ impl dyn File {
         self.write_all_at(buf, id * BLKSIZE)
     }
     fn read_direntry(&self, id: usize) -> DevResult<DiskEntry> {
-        let mut direntry: DiskEntry = unsafe { uninitialized() };
+        let mut direntry: DiskEntry = unsafe { MaybeUninit::uninit().assume_init() };
         self.read_exact_at(direntry.as_buf_mut(), DIRENT_SIZE * id)?;
         Ok(direntry)
     }
@@ -47,7 +46,7 @@ impl dyn File {
     }
     /// Load struct `T` from given block in device
     fn load_struct<T: AsBuf>(&self, id: BlockId) -> DevResult<T> {
-        let mut s: T = unsafe { uninitialized() };
+        let mut s: T = unsafe { MaybeUninit::uninit().assume_init() };
         self.read_block(id, s.as_buf_mut())?;
         Ok(s)
     }
@@ -478,7 +477,7 @@ pub struct SEFS {
     /// on-disk superblock
     super_block: RwLock<Dirty<SuperBlock>>,
     /// blocks in use are marked 0
-    free_map: RwLock<Dirty<BitVec>>,
+    free_map: RwLock<Dirty<BitVec<Lsb0, u8>>>,
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
@@ -515,7 +514,7 @@ impl SEFS {
             let block_id = Self::get_freemap_block_id_of_group(i);
             meta_file.read_block(
                 block_id,
-                &mut free_map.as_mut()[BLKSIZE * i..BLKSIZE * (i + 1)],
+                &mut free_map.as_mut_slice()[BLKSIZE * i..BLKSIZE * (i + 1)],
             )?;
         }
 
@@ -720,7 +719,7 @@ impl vfs::FileSystem for SEFS {
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
             for i in 0..super_block.groups as usize {
-                let slice = &free_map.as_ref()[BLKSIZE * i..BLKSIZE * (i + 1)];
+                let slice = &free_map.as_slice()[BLKSIZE * i..BLKSIZE * (i + 1)];
                 self.meta_file
                     .write_all_at(slice, BLKSIZE * Self::get_freemap_block_id_of_group(i))?;
             }
@@ -767,7 +766,7 @@ trait BitsetAlloc {
     fn alloc(&mut self) -> Option<usize>;
 }
 
-impl BitsetAlloc for BitVec {
+impl BitsetAlloc for BitVec<Lsb0, u8> {
     fn alloc(&mut self) -> Option<usize> {
         // TODO: more efficient
         let id = (0..self.len()).find(|&i| self[i]);
@@ -778,7 +777,7 @@ impl BitsetAlloc for BitVec {
     }
 }
 
-impl AsBuf for BitVec {
+impl AsBuf for BitVec<Lsb0, u8> {
     fn as_buf(&self) -> &[u8] {
         self.as_ref()
     }

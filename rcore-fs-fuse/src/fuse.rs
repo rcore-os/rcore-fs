@@ -11,12 +11,12 @@ use time::Timespec;
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 }; // 1 second
 
 pub struct VfsFuse {
-    fs: Arc<vfs::FileSystem>,
-    inodes: BTreeMap<usize, Arc<vfs::INode>>,
+    fs: Arc<dyn vfs::FileSystem>,
+    inodes: BTreeMap<usize, Arc<dyn vfs::INode>>,
 }
 
 impl VfsFuse {
-    pub fn new(fs: Arc<vfs::FileSystem>) -> Self {
+    pub fn new(fs: Arc<dyn vfs::FileSystem>) -> Self {
         let mut inodes = BTreeMap::new();
         inodes.insert(1, fs.root_inode());
         VfsFuse { fs, inodes }
@@ -80,7 +80,7 @@ impl VfsFuse {
             _ => EINVAL,
         }
     }
-    fn get_inode(&self, ino: u64) -> vfs::Result<&Arc<vfs::INode>> {
+    fn get_inode(&self, ino: u64) -> vfs::Result<&Arc<dyn vfs::INode>> {
         self.inodes
             .get(&(ino as usize))
             .ok_or(vfs::FsError::EntryNotFound)

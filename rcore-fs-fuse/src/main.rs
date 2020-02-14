@@ -74,9 +74,9 @@ fn main() {
         "sfs" => {
             let file = OpenOptions::new()
                 .read(true)
-                .write(true)
-                .create(true)
-                .truncate(true)
+                .write(create)
+                .create(create)
+                .truncate(create)
                 .open(&opt.image)
                 .expect("failed to open image");
             let device = Mutex::new(file);

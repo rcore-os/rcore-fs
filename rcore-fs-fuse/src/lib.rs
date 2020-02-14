@@ -1,4 +1,4 @@
-#[macro_use]
+//#[macro_use]
 extern crate log;
 
 #[cfg(feature = "use_fuse")]

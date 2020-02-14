@@ -58,8 +58,8 @@ impl<T: BlockDevice> Device for T {
                 // Read to target buf directly
                 try0!(len, BlockDevice::read_at(self, range.block, buf));
             } else {
-                use core::mem::uninitialized;
-                let mut block_buf: [u8; 1 << 10] = unsafe { uninitialized() };
+                use core::mem::MaybeUninit;
+                let mut block_buf: [u8; 1 << 10] = unsafe { MaybeUninit::uninit().assume_init() };
                 assert!(Self::BLOCK_SIZE_LOG2 <= 10);
                 // Read to local buf first
                 try0!(len, BlockDevice::read_at(self, range.block, &mut block_buf));
@@ -85,8 +85,8 @@ impl<T: BlockDevice> Device for T {
                 // Write to target buf directly
                 try0!(len, BlockDevice::write_at(self, range.block, buf));
             } else {
-                use core::mem::uninitialized;
-                let mut block_buf: [u8; 1 << 10] = unsafe { uninitialized() };
+                use core::mem::MaybeUninit;
+                let mut block_buf: [u8; 1 << 10] = unsafe { MaybeUninit::uninit().assume_init() };
                 assert!(Self::BLOCK_SIZE_LOG2 <= 10);
                 // Read to local buf first
                 try0!(len, BlockDevice::read_at(self, range.block, &mut block_buf));

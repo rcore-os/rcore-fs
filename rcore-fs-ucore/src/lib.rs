@@ -4,7 +4,7 @@
 //! `*.got.*` `*.data.*` `*.rodata.*`
 
 #![feature(lang_items)]
-#![feature(alloc)]
+
 #![feature(panic_info_message)]
 #![no_std]
 

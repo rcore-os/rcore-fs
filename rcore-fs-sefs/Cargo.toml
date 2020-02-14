@@ -7,19 +7,15 @@ edition = "2018"
 [dependencies]
 rcore-fs = { path = "../rcore-fs" }
 static_assertions = "0.3"
-spin = "0.4"
+spin = "0.5"
 log = "0.4"
-uuid = { version = "0.7", features = ["v4"]}
-
-[dependencies.bitvec]
-version = "0.9"
-default-features = false
-features = ["alloc"]
+uuid = { version = "0.7", features = ["v4"] }
+bitvec = { version = "0.17", default-features = false, features = ["alloc"] }
 
 [features]
 std = ["rcore-fs/std"]
-# Enable this feture when this crate is used for creating an SEFS image 
-# (e.g., sefs-fuse). When this feature is enabled, the MAC of an SEFS inode 
-# will be updated when the inode is closed. When this feature is disabled, 
+# Enable this feture when this crate is used for creating an SEFS image
+# (e.g., sefs-fuse). When this feature is enabled, the MAC of an SEFS inode
+# will be updated when the inode is closed. When this feature is disabled,
 # the MAC of an SEFS inode will be checked when the inode is open.
 create_image = []
