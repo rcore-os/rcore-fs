@@ -1,4 +1,5 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
+#![deny(warnings)]
 
 extern crate alloc;
 extern crate log;
@@ -12,7 +13,7 @@ use alloc::{
 use core::any::Any;
 use core::sync::atomic::*;
 use rcore_fs::vfs::*;
-use spin::{RwLock, RwLockWriteGuard};
+use spin::RwLock;
 
 pub struct RamFS {
     root: Arc<LockedINode>,

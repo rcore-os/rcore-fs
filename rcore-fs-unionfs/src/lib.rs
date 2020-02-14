@@ -1,12 +1,11 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(alloc)]
+#![deny(warnings)]
 
 extern crate alloc;
-#[macro_use]
 extern crate log;
 
 use alloc::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
@@ -30,7 +29,7 @@ pub struct UnionFS {
     self_ref: Weak<UnionFS>,
 }
 
-type INodeId = usize;
+//type INodeId = usize;
 
 /// INode for `UnionFS`
 pub struct UnionINode {
@@ -128,6 +127,7 @@ impl VirtualINode {
     }
 
     /// Whether this is a real INode
+    #[allow(dead_code)]
     fn is_real(&self) -> bool {
         self.distance == 0
     }

@@ -9,9 +9,9 @@ use rcore_fs::vfs::FileSystem;
 #[cfg(feature = "use_fuse")]
 use rcore_fs_fuse::fuse::VfsFuse;
 use rcore_fs_fuse::zip::{unzip_dir, zip_dir};
-use rcore_fs_sefs::dev::std_impl::StdUuidProvider;
 use rcore_fs_ramfs as ramfs;
 use rcore_fs_sefs as sefs;
+use rcore_fs_sefs::dev::std_impl::StdUuidProvider;
 use rcore_fs_sfs as sfs;
 
 use git_version::git_version;
@@ -91,18 +91,10 @@ fn main() {
             std::fs::create_dir_all(&opt.image).unwrap();
             let device = sefs::dev::StdStorage::new(&opt.image);
             match create {
-                true => sefs::SEFS::create(
-                    Box::new(device),
-                    &StdTimeProvider,
-                    &StdUuidProvider,
-                )
-                .expect("failed to create sefs"),
-                false => sefs::SEFS::open(
-                    Box::new(device),
-                    &StdTimeProvider,
-                    &StdUuidProvider,
-                )
-                .expect("failed to open sefs"),
+                true => sefs::SEFS::create(Box::new(device), &StdTimeProvider, &StdUuidProvider)
+                    .expect("failed to create sefs"),
+                false => sefs::SEFS::open(Box::new(device), &StdTimeProvider, &StdUuidProvider)
+                    .expect("failed to open sefs"),
             }
         }
         "ramfs" => ramfs::RamFS::new(),

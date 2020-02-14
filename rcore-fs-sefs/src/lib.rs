@@ -5,7 +5,6 @@ extern crate alloc;
 use alloc::{
     boxed::Box,
     collections::BTreeMap,
-    prelude::ToString,
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
@@ -647,7 +646,7 @@ impl SEFS {
         #[cfg(not(feature = "create_image"))]
         match create {
             false => inode.check_integrity(),
-            _ => {},
+            _ => {}
         };
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode

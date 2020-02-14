@@ -73,7 +73,7 @@ fn write_file() -> Result<()> {
 
 #[test]
 fn get_direntry() -> Result<()> {
-    let (root, croot, iroot) = create_sample()?;
+    let (root, _croot, _iroot) = create_sample()?;
     let entries: BTreeSet<String> = root.list()?.into_iter().collect();
     let expected: BTreeSet<String> = [".", "..", "file1", "file2", "file3", "dir"]
         .iter()
@@ -112,7 +112,7 @@ fn unlink() -> Result<()> {
 
 #[test]
 fn unlink_then_create() -> Result<()> {
-    let (root, croot, iroot) = create_sample()?;
+    let (root, croot, _iroot) = create_sample()?;
     root.unlink("file1")?;
     let file1 = root.create("file1", FileType::File, MODE)?;
     assert_eq!(file1.read_as_vec()?, b"");
