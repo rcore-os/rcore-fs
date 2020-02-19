@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use core::fmt::{Debug, Error, Formatter};
 use rcore_fs::vfs::FsError;
 

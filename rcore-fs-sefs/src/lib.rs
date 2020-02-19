@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::{
     boxed::Box,
     collections::BTreeMap,
-    string::String,
+    string::{String, ToString},
     sync::{Arc, Weak},
     vec::Vec,
 };

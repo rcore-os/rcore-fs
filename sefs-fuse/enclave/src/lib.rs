@@ -26,7 +26,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![crate_name = "helloworldsampleenclave"]
+#![crate_name = "sefsfuseenclave"]
 #![crate_type = "staticlib"]
 #![no_std]
 #![feature(lang_items)]
