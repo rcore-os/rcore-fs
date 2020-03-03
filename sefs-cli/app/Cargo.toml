@@ -10,8 +10,8 @@ sgx_types = "=1.1.0"
 sgx_urts = "=1.1.0"
 dirs = "1.0.2"
 fuse = "0.3"
-structopt = "0.2"
-env_logger = "0.3"
+structopt = "0.3"
+env_logger = "0.7"
 rcore-fs-fuse = { path = "../../rcore-fs-fuse", features = ["use_fuse"] }
 rcore-fs-sefs = { path = "../../rcore-fs-sefs", features = ["create_image"] }
 rcore-fs = { path = "../../rcore-fs", features = ["std"] }

@@ -11,4 +11,6 @@ members = [
     "rcore-fs-unionfs",
     "rcore-fs-hostfs",
 ]
-exclude = ["sefs-fuse"]
+exclude = [
+    "sefs-cli",
+]
