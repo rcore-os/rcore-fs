@@ -1,8 +1,9 @@
 [package]
-name = "rcore-fs-fuse"
+name = "rcore-fs-cli"
 version = "0.1.0"
-authors = ["WangRunji <wangrunji0408@163.com>"]
+authors = ["Runji Wang <wangrunji0408@163.com>"]
 edition = "2018"
+description = "Command line tools to manage rCore file systems."
 
 [features]
 use_fuse = ["fuse"]
@@ -12,8 +13,8 @@ time = "0.1"
 libc = "0.2"
 log = "0.4"
 fuse = { version = "0.3", optional = true }
-structopt = "0.2"
-env_logger = "0.3"
+structopt = "0.3"
+env_logger = "0.7"
 git-version = "0.3"
 rcore-fs = { path = "../rcore-fs", features = ["std"] }
 rcore-fs-sfs = { path = "../rcore-fs-sfs" }

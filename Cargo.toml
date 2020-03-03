@@ -3,7 +3,7 @@ members = [
     "rcore-fs",
     "rcore-fs-sfs",
     "rcore-fs-sefs",
-    "rcore-fs-fuse",
+    "rcore-fs-cli",
     "rcore-fs-ext2",
     "rcore-fs-ramfs",
     "rcore-fs-mountfs",
