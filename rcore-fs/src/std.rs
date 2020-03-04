@@ -1,15 +1,15 @@
 use crate::vfs::*;
+#[cfg(windows)]
+use filetime::FileTime;
 use std::io::Error;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::os::windows::fs::MetadataExt;
 #[cfg(windows)]
-use filetime::FileTime;
+use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::winnt;
-#[cfg(windows)]
-use winapi::shared::minwindef::DWORD;
 
 impl std::error::Error for FsError {}
 
