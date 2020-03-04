@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fs;
 use std::io::{Read, Write};
 use std::mem::MaybeUninit;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::str;
@@ -37,7 +38,10 @@ pub fn zip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>>
         } else if type_.is_symlink() {
             let target = fs::read_link(entry.path())?;
             let inode = inode.create(name, FileType::SymLink, DEFAULT_MODE)?;
+            #[cfg(unix)]
             let data = target.as_os_str().as_bytes();
+            #[cfg(windows)]
+            let data = target.to_str().unwrap().as_bytes();
             inode.resize(data.len())?;
             inode.write_at(0, data)?;
         }
@@ -71,7 +75,10 @@ pub fn unzip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error
             FileType::SymLink => {
                 let mut buf: [u8; BUF_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
                 let len = inode.read_at(0, buf.as_mut())?;
+                #[cfg(unix)]
                 std::os::unix::fs::symlink(str::from_utf8(&buf[..len]).unwrap(), path)?;
+                #[cfg(windows)]
+                std::os::windows::fs::symlink_file(str::from_utf8(&buf[..len]).unwrap(), path)?;
             }
             _ => panic!("unsupported file type"),
         }
