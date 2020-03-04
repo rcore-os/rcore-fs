@@ -11,5 +11,9 @@ libc = { version = "0.2", optional = true }
 [dev-dependencies]
 tempfile = "3"
 
+[target.'cfg(windows)'.dependencies]
+filetime = "0.2"
+winapi = "0.3"
+
 [features]
 std = ["libc"]
