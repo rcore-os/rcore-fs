@@ -3,6 +3,8 @@
 #![feature(get_mut_unchecked)]
 
 extern crate alloc;
+
+#[macro_use]
 extern crate log;
 
 use alloc::{
@@ -49,7 +51,7 @@ struct UnionINodeInner {
     /// INodes for each inner file systems
     inners: Vec<VirtualINode>,
     /// Cache of merged directory entries.
-    cached_entries: Option<Vec<String>>,
+    cached_entries: Option<BTreeSet<String>>,
 }
 
 /// A virtual INode of a path in a FS
@@ -95,7 +97,7 @@ impl UnionFS {
             })
             .collect();
         Arc::new(UnionINode {
-            id: 0,
+            id: 1,
             fs: self.self_ref.upgrade().unwrap(),
             inner: RwLock::new(UnionINodeInner {
                 path: Path::new(),
@@ -147,7 +149,7 @@ impl VirtualINode {
 
 impl UnionINodeInner {
     /// Merge directory entries from several INodes
-    fn merge_entries(inners: &[VirtualINode]) -> Result<Vec<String>> {
+    fn merge_entries(inners: &[VirtualINode]) -> Result<BTreeSet<String>> {
         let mut entries = BTreeSet::<String>::new();
         // images
         for inode in inners[1..].iter().filter_map(|v| v.as_real()) {
@@ -166,14 +168,16 @@ impl UnionINodeInner {
                 }
             }
         }
-        Ok(entries.into_iter().collect())
+        Ok(entries)
     }
 
     /// Get merged directory entries cache
-    fn entries(&mut self) -> Result<&mut Vec<String>> {
+    fn entries(&mut self) -> Result<&mut BTreeSet<String>> {
         let cache = &mut self.cached_entries;
         if cache.is_none() {
-            *cache = Some(Self::merge_entries(&self.inners)?);
+            let entries = Self::merge_entries(&self.inners)?;
+            debug!("{:?} cached dirents: {:?}", self.path, entries);
+            *cache = Some(entries);
         }
         Ok(cache.as_mut().unwrap())
     }
@@ -315,7 +319,7 @@ impl INode for UnionINode {
 
     fn create(&self, name: &str, type_: FileType, mode: u32) -> Result<Arc<dyn INode>> {
         let mut inner = self.inner.write();
-        if inner.entries()?.contains(&String::from(name)) {
+        if inner.entries()?.contains(name) {
             return Err(FsError::EntryExist);
         }
         let container_inode = inner.container_inode()?;
@@ -325,13 +329,13 @@ impl INode for UnionINode {
         }
         let new_inode = container_inode.create(name, type_, mode)?;
         // add `name` to entry cache
-        inner.entries()?.push(String::from(name));
+        inner.entries()?.insert(String::from(name));
         Ok(new_inode)
     }
 
     fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
         let mut inner = self.inner.write();
-        if inner.entries()?.contains(&String::from(name)) {
+        if inner.entries()?.contains(name) {
             return Err(FsError::EntryExist);
         }
         let child = other
@@ -347,13 +351,13 @@ impl INode for UnionINode {
             .clone();
         inner.container_inode()?.link(name, &child)?;
         // add `name` to entry cache
-        inner.entries()?.push(String::from(name));
+        inner.entries()?.insert(String::from(name));
         Ok(())
     }
 
     fn unlink(&self, name: &str) -> Result<()> {
         let mut inner = self.inner.write();
-        if !inner.entries()?.contains(&String::from(name)) {
+        if !inner.entries()?.contains(name) {
             return Err(FsError::EntryNotFound);
         }
         // if in container: remove directly
@@ -370,7 +374,7 @@ impl INode for UnionINode {
             .container_inode()?
             .create(&wh_name, FileType::File, 0o777)?;
         // remove `name` from entry cache
-        inner.entries()?.retain(|e| e != name);
+        inner.entries()?.remove(name);
         Ok(())
     }
 
@@ -393,15 +397,15 @@ impl INode for UnionINode {
         // add whiteout to container
         this.create(&old_name.whiteout(), FileType::File, 0o777)?;
         // remove `old_name` from entry cache
-        inner.entries()?.retain(|e| e != old_name);
+        inner.entries()?.remove(old_name);
         // add `new_name` to target's entry cache
-        target_inner.entries()?.push(String::from(new_name));
+        target_inner.entries()?.insert(String::from(new_name));
         Ok(())
     }
 
     fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
         let mut inner = self.inner.write();
-        if !inner.entries()?.contains(&String::from(name)) {
+        if !inner.entries()?.contains(name) {
             return Err(FsError::EntryNotFound);
         }
         let inodes: Result<Vec<_>> = inner.inners.iter().map(|x| x.find(name)).collect();
@@ -427,7 +431,7 @@ impl INode for UnionINode {
         if id >= entires.len() {
             Err(FsError::EntryNotFound)
         } else {
-            Ok(entires[id].clone())
+            Ok(entires.iter().nth(id).unwrap().clone())
         }
     }
 

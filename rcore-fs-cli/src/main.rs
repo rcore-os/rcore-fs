@@ -11,10 +11,13 @@ use rcore_fs::vfs::FileSystem;
 #[cfg(feature = "use_fuse")]
 use rcore_fs_cli::fuse::VfsFuse;
 use rcore_fs_cli::zip::{unzip_dir, zip_dir};
+use rcore_fs_hostfs as hostfs;
 use rcore_fs_ramfs as ramfs;
 use rcore_fs_sefs as sefs;
 use rcore_fs_sefs::dev::std_impl::StdUuidProvider;
 use rcore_fs_sfs as sfs;
+#[allow(unused_imports)]
+use rcore_fs_unionfs as unionfs;
 
 use git_version::git_version;
 
@@ -32,7 +35,7 @@ enum Opt {
         #[structopt(parse(from_os_str))]
         image: PathBuf,
 
-        /// File system: [sfs | sefs]
+        /// File system: [sfs | sefs | hostfs]
         #[structopt(short = "f", long = "fs", default_value = "sfs")]
         fs: String,
     },
@@ -48,7 +51,7 @@ enum Opt {
         #[structopt(parse(from_os_str))]
         dir: PathBuf,
 
-        /// File system: [sfs | sefs]
+        /// File system: [sfs | sefs | hostfs]
         #[structopt(short = "f", long = "fs", default_value = "sfs")]
         fs: String,
     },
@@ -65,9 +68,13 @@ enum Opt {
         #[structopt(parse(from_os_str))]
         mount_point: PathBuf,
 
-        /// File system: [sfs | sefs]
+        /// File system: [sfs | sefs | hostfs]
         #[structopt(short = "f", long = "fs", default_value = "sfs")]
         fs: String,
+
+        /// Other images for UnionFS
+        #[structopt(name = "union", parse(from_os_str))]
+        union_images: Vec<PathBuf>,
     },
 
     #[structopt(name = "git-version")]
@@ -93,8 +100,16 @@ fn main() {
             image,
             mount_point,
             fs,
+            union_images,
         } => {
-            let fs = open_fs(&fs, &image, !image.exists());
+            let mut fs = open_fs(&fs, &image, !image.exists());
+            if !union_images.is_empty() {
+                let mut fss = vec![fs.clone()];
+                for image in union_images.iter() {
+                    fss.push(hostfs::HostFS::new(image));
+                }
+                fs = unionfs::UnionFS::new(fss);
+            }
             fuse::mount(VfsFuse::new(fs), &mount_point, &[]).expect("failed to mount fs");
         }
         Opt::GitVersion => {
@@ -131,6 +146,10 @@ fn open_fs(fs: &str, image: &Path, create: bool) -> Arc<dyn FileSystem> {
                 false => sefs::SEFS::open(Box::new(device), &StdTimeProvider, &StdUuidProvider)
                     .expect("failed to open sefs"),
             }
+        }
+        "hostfs" => {
+            std::fs::create_dir_all(image).unwrap();
+            hostfs::HostFS::new(image)
         }
         "ramfs" => ramfs::RamFS::new(),
         _ => panic!("unsupported file system"),

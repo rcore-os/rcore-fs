@@ -39,7 +39,17 @@ impl FileSystem for HostFS {
     }
 
     fn info(&self) -> FsInfo {
-        unimplemented!()
+        // TODO:
+        FsInfo {
+            bsize: 0,
+            frsize: 0,
+            blocks: 0,
+            bfree: 0,
+            bavail: 0,
+            files: 0,
+            ffree: 0,
+            namemax: 0
+        }
     }
 }
 
