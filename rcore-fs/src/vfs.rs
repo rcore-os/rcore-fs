@@ -88,6 +88,11 @@ pub trait INode: Any + Sync + Send {
         Err(FsError::NotSupported)
     }
 
+    /// Map files or devices into memory
+    fn mmap(&self, _area: MMapArea) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
+
     /// Get the file system of the INode
     fn fs(&self) -> Arc<dyn FileSystem> {
         unimplemented!();
@@ -192,6 +197,19 @@ pub struct PollStatus {
     pub read: bool,
     pub write: bool,
     pub error: bool,
+}
+
+pub struct MMapArea {
+    /// Start virtual address
+    pub start_vaddr: usize,
+    /// End virtual address
+    pub end_vaddr: usize,
+    /// Access permissions
+    pub prot: usize,
+    /// Flags
+    pub flags: usize,
+    /// Offset from the file in bytes
+    pub offset: usize,
 }
 
 /// Metadata of INode

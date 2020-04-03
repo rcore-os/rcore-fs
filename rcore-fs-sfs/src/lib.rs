@@ -21,7 +21,7 @@ use spin::RwLock;
 use rcore_fs::dev::Device;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::util::*;
-use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Timespec};
 
 pub use self::structs::*;
 
@@ -692,6 +692,9 @@ impl vfs::INode for INodeImpl {
                 Err(FsError::IOCTLError)
             }
         }
+    }
+    fn mmap(&self, _area: MMapArea) -> vfs::Result<()> {
+        Err(FsError::NotSupported)
     }
     fn fs(&self) -> Arc<dyn vfs::FileSystem> {
         self.fs.clone()

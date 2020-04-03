@@ -16,7 +16,7 @@ use core::mem::MaybeUninit;
 use bitvec::prelude::*;
 use rcore_fs::dev::TimeProvider;
 use rcore_fs::dirty::Dirty;
-use rcore_fs::vfs::{self, FileSystem, FsError, INode, Timespec};
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Timespec};
 use spin::RwLock;
 
 use self::dev::*;
@@ -424,6 +424,9 @@ impl vfs::INode for INodeImpl {
         Ok(String::from(entry.name.as_ref()))
     }
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<()> {
+        Err(FsError::NotSupported)
+    }
+    fn mmap(&self, _area: MMapArea) -> vfs::Result<()> {
         Err(FsError::NotSupported)
     }
     fn fs(&self) -> Arc<dyn vfs::FileSystem> {

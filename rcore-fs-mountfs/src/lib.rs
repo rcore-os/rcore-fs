@@ -295,6 +295,10 @@ impl INode for MNode {
         self.inode.io_control(cmd, data)
     }
 
+    fn mmap(&self, area: MMapArea) -> Result<()> {
+        self.inode.mmap(area)
+    }
+
     fn fs(&self) -> Arc<dyn FileSystem> {
         self.vfs.clone()
     }

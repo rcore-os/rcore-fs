@@ -309,6 +309,10 @@ impl INode for LockedINode {
         Err(FsError::NotSupported)
     }
 
+    fn mmap(&self, _area: MMapArea) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
+
     fn fs(&self) -> Arc<dyn FileSystem> {
         Weak::upgrade(&self.0.read().fs).unwrap()
     }
