@@ -37,6 +37,9 @@ macro_rules! impl_inode {
         fn io_control(&self, _cmd: u32, _data: usize) -> Result<()> {
             Err(FsError::NotSupported)
         }
+        fn mmap(&self, _area: MMapArea) -> Result<()> {
+            Err(FsError::NotSupported)
+        }
         fn fs(&self) -> Arc<dyn FileSystem> {
             unimplemented!()
         }

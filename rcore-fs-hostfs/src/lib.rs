@@ -193,6 +193,10 @@ impl INode for HNode {
         Err(FsError::NotSupported)
     }
 
+    fn mmap(&self, _area: MMapArea) -> Result<()> {
+        Err(FsError::NotSupported)
+    }
+
     fn fs(&self) -> Arc<dyn FileSystem> {
         self.fs.clone()
     }
