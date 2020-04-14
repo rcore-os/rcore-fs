@@ -189,7 +189,7 @@ impl INode for HNode {
             .map_err(|_| FsError::InvalidParam)
     }
 
-    fn io_control(&self, _cmd: u32, _data: usize) -> Result<()> {
+    fn io_control(&self, _cmd: u32, _data: usize) -> Result<usize> {
         Err(FsError::NotSupported)
     }
 
