@@ -276,7 +276,7 @@ impl Timespec {
         let usec = get_epoch_usec();
         TimeSpec {
             sec: usec / USEC_PER_SEC,
-            nsec: (usec % USEC_PER_SEC * NSEC_PER_USEC) as u32
+            nsec: (usec % USEC_PER_SEC * NSEC_PER_USEC) as u32,
         }
     }
 }
