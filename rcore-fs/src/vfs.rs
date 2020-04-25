@@ -4,6 +4,7 @@ use core::any::Any;
 use core::fmt;
 use core::result;
 use core::str;
+use core::time::Duration;
 
 /// Abstract file system object such as file or directory.
 pub trait INode: Any + Sync + Send {
@@ -257,8 +258,26 @@ pub struct Metadata {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Timespec {
-    pub sec: i64,
-    pub nsec: i32,
+    pub sec: u64,
+    pub nsec: u32,
+}
+
+impl Timespec {
+    pub fn to_msec(&self) -> u64 {
+        (self.sec as u64) * MSEC_PER_SEC + (self.nsec as u64) / NSEC_PER_MSEC
+    }
+
+    pub fn to_duration(&self) -> Duration {
+        Duration::new(self.sec as u64, self.nsec as u32)
+    }
+
+    pub fn get_epoch() -> Self {
+        let usec = get_epoch_usec();
+        TimeSpec {
+            sec: usec / USEC_PER_SEC,
+            nsec: (usec % USEC_PER_SEC * NSEC_PER_USEC) as u32
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
