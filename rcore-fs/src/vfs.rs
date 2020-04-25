@@ -85,7 +85,7 @@ pub trait INode: Any + Sync + Send {
     }
 
     /// Control device
-    fn io_control(&self, _cmd: u32, _data: usize) -> Result<()> {
+    fn io_control(&self, _cmd: u32, _data: usize) -> Result<usize> {
         Err(FsError::NotSupported)
     }
 
@@ -200,6 +200,7 @@ pub struct PollStatus {
     pub error: bool,
 }
 
+#[derive(Debug)]
 pub struct MMapArea {
     /// Start virtual address
     pub start_vaddr: usize,
