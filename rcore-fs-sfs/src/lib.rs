@@ -12,6 +12,7 @@ use alloc::{
     vec::Vec,
 };
 use core::any::Any;
+use core::cell::Cell;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::MaybeUninit;
 
@@ -21,7 +22,7 @@ use spin::RwLock;
 use rcore_fs::dev::Device;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::util::*;
-use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Timespec};
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Metadata, Timespec};
 
 pub use self::structs::*;
 
@@ -460,9 +461,9 @@ impl vfs::INode for INodeImpl {
             mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
-            atime: Timespec { sec: 0, nsec: 0 },
-            mtime: Timespec { sec: 0, nsec: 0 },
-            ctime: Timespec { sec: 0, nsec: 0 },
+            atime: disk_inode.atime,
+            mtime: disk_inode.mtime,
+            ctime: disk_inode.ctime,
             nlinks: disk_inode.nlinks as usize,
             uid: 0,
             gid: 0,
@@ -470,8 +471,11 @@ impl vfs::INode for INodeImpl {
             rdev: self.device_inode_id,
         })
     }
-    fn set_metadata(&self, _metadata: &vfs::Metadata) -> vfs::Result<()> {
-        // No-op for sfs
+    fn set_metadata(&self, metadata: &vfs::Metadata) -> vfs::Result<()> {
+        let mut disk_inode = self.disk_inode.write();
+        disk_inode.atime = metadata.atime;
+        disk_inode.mtime = metadata.mtime;
+        disk_inode.ctime = metadata.ctime;
         Ok(())
     }
     fn sync_all(&self) -> vfs::Result<()> {
@@ -860,7 +864,7 @@ impl SimpleFileSystem {
             id,
             disk_inode: RwLock::new(disk_inode),
             fs: self.self_ptr.upgrade().unwrap(),
-            device_inode_id: device_inode_id,
+            device_inode_id,
         });
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode
