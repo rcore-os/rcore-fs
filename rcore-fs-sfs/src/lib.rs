@@ -633,8 +633,8 @@ impl vfs::INode for INodeImpl {
         if dest_info.nlinks <= 0 {
             return Err(FsError::DirRemoved);
         }
-        if dest.get_file_inode_id(new_name).is_some() {
-            return Err(FsError::EntryExist);
+        if let Some((_, id)) = dest.get_file_inode_and_entry_id(new_name) {
+            dest.remove_direntry(id);
         }
 
         let (inode_id, entry_id) = self
