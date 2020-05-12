@@ -78,8 +78,8 @@ pub trait INode: Any + Sync + Send {
         Err(FsError::NotSupported)
     }
 
-    /// Get the name of directory entry
-    fn get_entry(&self, _id: usize) -> Result<String> {
+    /// Get the inode id, file type, name of the directory entry
+    fn get_entry(&self, _id: usize) -> Result<(usize, FileType, String)> {
         Err(FsError::NotSupported)
     }
 
@@ -110,7 +110,7 @@ impl dyn INode {
     }
 
     /// Get all directory entries as a Vec
-    pub fn list(&self) -> Result<Vec<String>> {
+    pub fn list(&self) -> Result<Vec<(usize, FileType, String)>> {
         let info = self.metadata()?;
         if info.type_ != FileType::Dir {
             return Err(FsError::NotDir);

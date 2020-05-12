@@ -10,6 +10,7 @@ use alloc::{
     vec::Vec,
 };
 use core::any::Any;
+use rcore_fs::vfs::FileType::File;
 use rcore_fs::vfs::*;
 use spin::{RwLock, RwLockWriteGuard};
 
@@ -286,18 +287,19 @@ impl INode for LockedINode {
         }
     }
 
-    fn get_entry(&self, id: usize) -> Result<String> {
+    fn get_entry(&self, id: usize) -> Result<(usize, FileType, String)> {
         let file = self.0.read();
         if file.extra.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
 
         match id {
-            0 => Ok(String::from(".")),
-            1 => Ok(String::from("..")),
+            0 => Ok((file.extra.inode, FileType::Dir, String::from("."))),
+            1 => Ok((file.extra.inode, FileType::Dir, String::from(".."))),
             i => {
-                if let Some(s) = file.children.keys().nth(i - 2) {
-                    Ok(s.to_string())
+                if let Some((name, inode)) = file.children.iter().nth(i - 2) {
+                    let metadata = inode.metadata()?;
+                    Ok((metadata.inode, metadata.type_, name.to_string()))
                 } else {
                     Err(FsError::EntryNotFound)
                 }

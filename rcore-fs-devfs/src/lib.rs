@@ -169,13 +169,22 @@ impl INode for DevRootINode {
         }
     }
 
-    fn get_entry(&self, id: usize) -> Result<String> {
+    fn get_entry(&self, id: usize) -> Result<(usize, FileType, String)> {
         match id {
-            0 => Ok(String::from(".")),
-            1 => Ok(String::from("..")),
+            0 => Ok((
+                self.metadata().unwrap().inode,
+                FileType::Dir,
+                String::from("."),
+            )),
+            1 => Ok((
+                self.metadata().unwrap().inode,
+                FileType::Dir,
+                String::from(".."),
+            )),
             i => {
-                if let Some(s) = self.fs.devs.read().keys().nth(i - 2) {
-                    Ok(s.to_string())
+                if let Some((name, inode)) = self.fs.devs.read().iter().nth(i - 2) {
+                    let metadata = inode.metadata()?;
+                    Ok((metadata.inode, metadata.type_, name.to_string()))
                 } else {
                     Err(FsError::EntryNotFound)
                 }

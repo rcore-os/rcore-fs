@@ -4,6 +4,7 @@ use alloc::str;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::{size_of, size_of_val};
 use core::slice;
+use rcore_fs::vfs;
 use static_assertions::const_assert;
 
 /// On-disk superblock
@@ -134,6 +135,17 @@ pub enum FileType {
     File = 1,
     Dir = 2,
     SymLink = 3,
+}
+
+impl From<vfs::FileType> for FileType {
+    fn from(x: vfs::FileType) -> Self {
+        match x {
+            vfs::FileType::File => FileType::File,
+            vfs::FileType::Dir => FileType::Dir,
+            vfs::FileType::SymLink => FileType::SymLink,
+            _ => FileType::Invalid,
+        }
+    }
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
