@@ -691,7 +691,10 @@ impl vfs::INode for INodeImpl {
             return Err(FsError::EntryNotFound);
         };
         let entry = self.read_direntry(id)?;
-        Ok((self.fs.get_inode(entry.id as usize).metadata()?, String::from(entry.name.as_ref())))
+        Ok((
+            self.fs.get_inode(entry.id as usize).metadata()?,
+            String::from(entry.name.as_ref()),
+        ))
     }
 
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<usize> {
