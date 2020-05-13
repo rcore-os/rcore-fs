@@ -176,23 +176,17 @@ impl INode for HNode {
         }))
     }
 
-    fn get_entry(&self, id: usize) -> Result<(usize, FileType, String)> {
+    fn get_entry(&self, id: usize) -> Result<String> {
         if !self.path.is_dir() {
             return Err(FsError::NotDir);
         }
-        let dir_entry = self
-            .path
+        self.path
             .read_dir()?
             .nth(id)
-            .ok_or(FsError::EntryNotFound)?;
-        let dir_entry = dir_entry?;
-        let name = dir_entry
+            .ok_or(FsError::EntryNotFound)??
             .file_name()
             .into_string()
-            .map_err(|_| FsError::InvalidParam)?;
-        // FIXME: to expand the return value of get_entry interface, implement like this for compilation, fix this if not accurate
-        let metadata: Metadata = dir_entry.metadata().unwrap().into();
-        Ok((metadata.inode, metadata.type_, name))
+            .map_err(|_| FsError::InvalidParam)
     }
 
     fn io_control(&self, _cmd: u32, _data: usize) -> Result<usize> {

@@ -413,25 +413,15 @@ impl vfs::INode for INodeImpl {
         let inode_id = self.get_file_inode_id(name).ok_or(FsError::EntryNotFound)?;
         Ok(self.fs.get_inode(inode_id))
     }
-    fn get_entry(&self, id: usize) -> vfs::Result<(usize, vfs::FileType, String)> {
+    fn get_entry(&self, id: usize) -> vfs::Result<String> {
         if self.disk_inode.read().type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
         if id >= self.disk_inode.read().blocks as usize {
             return Err(FsError::EntryNotFound);
         };
-
         let entry = self.file.read_direntry(id)?;
-        Ok((
-            entry.id as usize,
-            self.fs
-                .get_inode(entry.id as usize)
-                .disk_inode
-                .read()
-                .type_
-                .into(),
-            String::from(entry.name.as_ref()),
-        ))
+        Ok(String::from(entry.name.as_ref()))
     }
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<usize> {
         Err(FsError::NotSupported)

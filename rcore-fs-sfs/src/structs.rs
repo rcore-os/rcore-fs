@@ -273,19 +273,6 @@ pub enum FileType {
     BlockDevice = 5,
 }
 
-impl From<vfs::FileType> for FileType {
-    fn from(x: vfs::FileType) -> Self {
-        match x {
-            vfs::FileType::File => FileType::File,
-            vfs::FileType::Dir => FileType::Dir,
-            vfs::FileType::SymLink => FileType::SymLink,
-            vfs::FileType::CharDevice => FileType::CharDevice,
-            vfs::FileType::BlockDevice => FileType::BlockDevice,
-            _ => FileType::Invalid,
-        }
-    }
-}
-
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
 const_assert!(o2; size_of::<DiskINode>() <= BLKSIZE);
 const_assert!(o3; size_of::<DiskEntry>() <= BLKSIZE);

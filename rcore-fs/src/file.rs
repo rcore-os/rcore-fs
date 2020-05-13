@@ -1,4 +1,4 @@
-use crate::vfs::{FileType, INode, Metadata, Result};
+use crate::vfs::{INode, Metadata, Result};
 use alloc::{string::String, sync::Arc};
 
 pub struct File {
@@ -36,7 +36,7 @@ impl File {
         self.inode.metadata()
     }
 
-    pub fn get_entry(&self, id: usize) -> Result<(usize, FileType, String)> {
+    pub fn get_entry(&self, id: usize) -> Result<String> {
         self.inode.get_entry(id)
     }
 }
