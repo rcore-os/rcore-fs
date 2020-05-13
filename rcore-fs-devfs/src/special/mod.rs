@@ -31,7 +31,7 @@ macro_rules! impl_inode {
         fn find(&self, _name: &str) -> Result<Arc<dyn INode>> {
             Err(FsError::NotDir)
         }
-        fn get_entry(&self, _id: usize) -> Result<String> {
+        fn get_entry(&self, _id: usize) -> Result<(usize, FileType, String)> {
             Err(FsError::NotDir)
         }
         fn io_control(&self, _cmd: u32, _data: usize) -> Result<usize> {

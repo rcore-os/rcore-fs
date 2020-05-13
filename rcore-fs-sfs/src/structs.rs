@@ -6,6 +6,7 @@ use alloc::str;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::{size_of, size_of_val};
 use core::slice;
+use rcore_fs::vfs::Timespec;
 use static_assertions::const_assert;
 
 /// On-disk superblock
@@ -46,6 +47,12 @@ pub struct DiskINode {
     pub db_indirect: u32,
     /// device inode id for char/block device (major, minor)
     pub device_inode_id: usize,
+    /// Time of last access
+    pub atime: Timespec,
+    /// Time of last modification
+    pub mtime: Timespec,
+    /// Time of last change
+    pub ctime: Timespec,
 }
 
 /*
@@ -137,6 +144,9 @@ impl DiskINode {
             indirect: 0,
             db_indirect: 0,
             device_inode_id: NODEVICE,
+            atime: Timespec { sec: 0, nsec: 0 },
+            mtime: Timespec { sec: 0, nsec: 0 },
+            ctime: Timespec { sec: 0, nsec: 0 },
         }
     }
     pub const fn new_symlink() -> Self {
@@ -149,6 +159,9 @@ impl DiskINode {
             indirect: 0,
             db_indirect: 0,
             device_inode_id: NODEVICE,
+            atime: Timespec { sec: 0, nsec: 0 },
+            mtime: Timespec { sec: 0, nsec: 0 },
+            ctime: Timespec { sec: 0, nsec: 0 },
         }
     }
     pub const fn new_dir() -> Self {
@@ -161,6 +174,9 @@ impl DiskINode {
             indirect: 0,
             db_indirect: 0,
             device_inode_id: NODEVICE,
+            atime: Timespec { sec: 0, nsec: 0 },
+            mtime: Timespec { sec: 0, nsec: 0 },
+            ctime: Timespec { sec: 0, nsec: 0 },
         }
     }
     pub const fn new_chardevice(device_inode_id: usize) -> Self {
@@ -172,7 +188,10 @@ impl DiskINode {
             direct: [0; NDIRECT],
             indirect: 0,
             db_indirect: 0,
-            device_inode_id: device_inode_id,
+            device_inode_id,
+            atime: Timespec { sec: 0, nsec: 0 },
+            mtime: Timespec { sec: 0, nsec: 0 },
+            ctime: Timespec { sec: 0, nsec: 0 },
         }
     }
 }
@@ -252,6 +271,19 @@ pub enum FileType {
     SymLink = 3,
     CharDevice = 4,
     BlockDevice = 5,
+}
+
+impl From<vfs::FileType> for FileType {
+    fn from(x: vfs::FileType) -> Self {
+        match x {
+            vfs::FileType::File => FileType::File,
+            vfs::FileType::Dir => FileType::Dir,
+            vfs::FileType::SymLink => FileType::SymLink,
+            vfs::FileType::CharDevice => FileType::CharDevice,
+            vfs::FileType::BlockDevice => FileType::BlockDevice,
+            _ => FileType::Invalid,
+        }
+    }
 }
 
 const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);

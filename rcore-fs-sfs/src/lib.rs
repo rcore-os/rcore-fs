@@ -12,6 +12,7 @@ use alloc::{
     vec::Vec,
 };
 use core::any::Any;
+use core::cell::Cell;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::MaybeUninit;
 
@@ -21,7 +22,7 @@ use spin::RwLock;
 use rcore_fs::dev::Device;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::util::*;
-use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Timespec};
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Metadata, Timespec};
 
 pub use self::structs::*;
 
@@ -460,9 +461,9 @@ impl vfs::INode for INodeImpl {
             mode: 0o777,
             type_: vfs::FileType::from(disk_inode.type_.clone()),
             blocks: disk_inode.blocks as usize,
-            atime: Timespec { sec: 0, nsec: 0 },
-            mtime: Timespec { sec: 0, nsec: 0 },
-            ctime: Timespec { sec: 0, nsec: 0 },
+            atime: disk_inode.atime,
+            mtime: disk_inode.mtime,
+            ctime: disk_inode.ctime,
             nlinks: disk_inode.nlinks as usize,
             uid: 0,
             gid: 0,
@@ -470,8 +471,11 @@ impl vfs::INode for INodeImpl {
             rdev: self.device_inode_id,
         })
     }
-    fn set_metadata(&self, _metadata: &vfs::Metadata) -> vfs::Result<()> {
-        // No-op for sfs
+    fn set_metadata(&self, metadata: &vfs::Metadata) -> vfs::Result<()> {
+        let mut disk_inode = self.disk_inode.write();
+        disk_inode.atime = metadata.atime;
+        disk_inode.mtime = metadata.mtime;
+        disk_inode.ctime = metadata.ctime;
         Ok(())
     }
     fn sync_all(&self) -> vfs::Result<()> {
@@ -629,8 +633,8 @@ impl vfs::INode for INodeImpl {
         if dest_info.nlinks <= 0 {
             return Err(FsError::DirRemoved);
         }
-        if dest.get_file_inode_id(new_name).is_some() {
-            return Err(FsError::EntryExist);
+        if let Some((_, id)) = dest.get_file_inode_and_entry_id(new_name) {
+            dest.remove_direntry(id);
         }
 
         let (inode_id, entry_id) = self
@@ -669,7 +673,7 @@ impl vfs::INode for INodeImpl {
         let inode_id = self.get_file_inode_id(name).ok_or(FsError::EntryNotFound)?;
         Ok(self.fs.get_inode(inode_id))
     }
-    fn get_entry(&self, id: usize) -> vfs::Result<String> {
+    fn get_entry(&self, id: usize) -> vfs::Result<(usize, vfs::FileType, String)> {
         if self.disk_inode.read().type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
@@ -677,7 +681,16 @@ impl vfs::INode for INodeImpl {
             return Err(FsError::EntryNotFound);
         };
         let entry = self.read_direntry(id)?;
-        Ok(String::from(entry.name.as_ref()))
+        Ok((
+            entry.id as usize,
+            self.fs
+                .get_inode(entry.id as usize)
+                .disk_inode
+                .read()
+                .type_
+                .into(),
+            String::from(entry.name.as_ref()),
+        ))
     }
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<usize> {
         if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
@@ -860,7 +873,7 @@ impl SimpleFileSystem {
             id,
             disk_inode: RwLock::new(disk_inode),
             fs: self.self_ptr.upgrade().unwrap(),
-            device_inode_id: device_inode_id,
+            device_inode_id,
         });
         self.inodes.write().insert(id, Arc::downgrade(&inode));
         inode
@@ -1015,7 +1028,7 @@ impl From<FileType> for vfs::FileType {
             FileType::Dir => vfs::FileType::Dir,
             FileType::CharDevice => vfs::FileType::CharDevice,
             FileType::BlockDevice => vfs::FileType::BlockDevice,
-            _ => panic!("unknown file type"),
+            _ => panic!("unknown file type of {:?}"),
         }
     }
 }
