@@ -540,13 +540,28 @@ fn create_then_get_entry() -> Result<()> {
     let sfs = _create_new_sfs();
     let root = sfs.root_inode();
 
-    assert!(root.get_entry(0).unwrap() == String::from("."), "entry 0 is .");
-    assert!(root.get_entry_with_metadata(0).unwrap().1 == String::from("."), "entry 0 is .");
-    assert!(root.get_entry(1).unwrap() == String::from(".."), "entry 1 is ..");
-    assert!(root.get_entry_with_metadata(1).unwrap().1 == String::from(".."), "entry 1 is ..");
+    assert!(
+        root.get_entry(0).unwrap() == String::from("."),
+        "entry 0 is ."
+    );
+    assert!(
+        root.get_entry_with_metadata(0).unwrap().1 == String::from("."),
+        "entry 0 is ."
+    );
+    assert!(
+        root.get_entry(1).unwrap() == String::from(".."),
+        "entry 1 is .."
+    );
+    assert!(
+        root.get_entry_with_metadata(1).unwrap().1 == String::from(".."),
+        "entry 1 is .."
+    );
 
     let _file1 = root.create("file1", FileType::File, 0o777)?;
-    assert!(root.get_entry_with_metadata(2).unwrap().1 == String::from("file1"), "entry 2 is file1");
+    assert!(
+        root.get_entry_with_metadata(2).unwrap().1 == String::from("file1"),
+        "entry 2 is file1"
+    );
 
     sfs.sync()?;
     Ok(())
