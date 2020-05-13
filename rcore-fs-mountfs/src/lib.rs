@@ -291,6 +291,10 @@ impl INode for MNode {
         self.inode.get_entry(id)
     }
 
+    fn get_entry_with_metadata(&self, id: usize) -> Result<(Metadata, String)> {
+        self.inode.get_entry_with_metadata(id)
+    }
+
     fn io_control(&self, cmd: u32, data: usize) -> Result<usize> {
         self.inode.io_control(cmd, data)
     }
