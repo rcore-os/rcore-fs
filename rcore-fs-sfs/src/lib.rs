@@ -12,7 +12,6 @@ use alloc::{
     vec::Vec,
 };
 use core::any::Any;
-use core::cell::Cell;
 use core::fmt::{Debug, Error, Formatter};
 use core::mem::MaybeUninit;
 
@@ -22,7 +21,7 @@ use spin::RwLock;
 use rcore_fs::dev::Device;
 use rcore_fs::dirty::Dirty;
 use rcore_fs::util::*;
-use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Metadata, Timespec};
+use rcore_fs::vfs::{self, FileSystem, FsError, INode, MMapArea, Metadata};
 
 pub use self::structs::*;
 
@@ -634,7 +633,7 @@ impl vfs::INode for INodeImpl {
             return Err(FsError::DirRemoved);
         }
         if let Some((_, id)) = dest.get_file_inode_and_entry_id(new_name) {
-            dest.remove_direntry(id);
+            dest.remove_direntry(id)?;
         }
 
         let (inode_id, entry_id) = self
@@ -683,6 +682,18 @@ impl vfs::INode for INodeImpl {
         let entry = self.read_direntry(id)?;
         Ok(String::from(entry.name.as_ref()))
     }
+
+    fn get_entry_with_metadata(&self, id: usize) -> vfs::Result<(Metadata, String)> {
+        if self.disk_inode.read().type_ != FileType::Dir {
+            return Err(FsError::NotDir);
+        }
+        if id >= self.disk_inode.read().size as usize / DIRENT_SIZE {
+            return Err(FsError::EntryNotFound);
+        };
+        let entry = self.read_direntry(id)?;
+        Ok((self.fs.get_inode(entry.id as usize).metadata()?, String::from(entry.name.as_ref())))
+    }
+
     fn io_control(&self, _cmd: u32, _data: usize) -> vfs::Result<usize> {
         if self.metadata().unwrap().type_ != vfs::FileType::CharDevice {
             return Err(FsError::IOCTLError);

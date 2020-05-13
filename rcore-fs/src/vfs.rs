@@ -83,6 +83,11 @@ pub trait INode: Any + Sync + Send {
         Err(FsError::NotSupported)
     }
 
+    /// Get the name of directory entry with metadata
+    fn get_entry_with_metadata(&self, _id: usize) -> Result<(Metadata, String)> {
+        Err(FsError::NotSupported)
+    }
+
     /// Control device
     fn io_control(&self, _cmd: u32, _data: usize) -> Result<usize> {
         Err(FsError::NotSupported)
