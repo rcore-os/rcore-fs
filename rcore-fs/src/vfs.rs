@@ -84,8 +84,11 @@ pub trait INode: Any + Sync + Send {
     }
 
     /// Get the name of directory entry with metadata
-    fn get_entry_with_metadata(&self, _id: usize) -> Result<(Metadata, String)> {
-        Err(FsError::NotSupported)
+    fn get_entry_with_metadata(&self, id: usize) -> Result<(Metadata, String)> {
+        // a default and slow implementation
+        let name = self.get_entry(id)?;
+        let entry = self.find(&name)?;
+        Ok((entry.metadata()?, name))
     }
 
     /// Control device
