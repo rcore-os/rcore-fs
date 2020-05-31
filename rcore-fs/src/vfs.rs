@@ -323,9 +323,9 @@ pub enum FsError {
     DeviceError,
     IOCTLError,
     NoDevice,
-    Again,   // E_AGAIN, when no data is available, never happens in fs
-    SymLoop, // E_LOOP
-    Busy,    // E_BUSY
+    Again,       // E_AGAIN, when no data is available, never happens in fs
+    SymLoop,     // E_LOOP
+    Busy,        // E_BUSY
     Interrupted, // E_INTR
 }
 
