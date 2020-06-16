@@ -1,7 +1,9 @@
 use crate::dev::DevError;
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::any::Any;
 use core::fmt;
+use core::future::Future;
+use core::pin::Pin;
 use core::result;
 use core::str;
 
@@ -15,6 +17,14 @@ pub trait INode: Any + Sync + Send {
 
     /// Poll the events, return a bitmap of events.
     fn poll(&self) -> Result<PollStatus>;
+
+    /// Poll the events, return a bitmap of events, async version.
+    fn async_poll<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = Result<PollStatus>> + Send + Sync + 'a>> {
+        let f = async move || self.poll();
+        Box::pin(f())
+    }
 
     /// Get metadata of the INode
     fn metadata(&self) -> Result<Metadata> {
