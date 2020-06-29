@@ -942,13 +942,14 @@ impl SimpleFileSystem {
 impl vfs::FileSystem for SimpleFileSystem {
     /// Write back super block if dirty
     fn sync(&self) -> vfs::Result<()> {
+        // order is important, see issue #18
+        let mut free_map = self.free_map.write();
         let mut super_block = self.super_block.write();
         if super_block.dirty() {
             self.device
                 .write_at(BLKSIZE * BLKN_SUPER, super_block.as_buf())?;
             super_block.sync();
         }
-        let mut free_map = self.free_map.write();
         if free_map.dirty() {
             let data = free_map.as_buf();
             for i in 0..super_block.freemap_blocks as usize {
