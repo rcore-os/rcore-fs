@@ -18,11 +18,14 @@ impl From<std::io::Error> for FsError {
         use std::io::ErrorKind;
         match e.kind() {
             ErrorKind::NotFound => FsError::EntryNotFound,
+            // We do not have permission in our fs, just ignore the file
+            ErrorKind::PermissionDenied => FsError::EntryNotFound,
             ErrorKind::AlreadyExists => FsError::EntryExist,
             ErrorKind::WouldBlock => FsError::Again,
             ErrorKind::InvalidInput => FsError::InvalidParam,
             ErrorKind::InvalidData => FsError::InvalidParam,
-            _ => unimplemented!(),
+            // The host fs is the device here
+            _ => FsError::DeviceError,
         }
     }
 }
