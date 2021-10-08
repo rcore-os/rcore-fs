@@ -273,8 +273,8 @@ pub enum FileType {
     BlockDevice = 5,
 }
 
-const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
-const_assert!(o2; size_of::<DiskINode>() <= BLKSIZE);
-const_assert!(o3; size_of::<DiskEntry>() <= BLKSIZE);
-const_assert!(o4; size_of::<IndirectBlock>() == BLKSIZE);
-const_assert!(o5; DEFAULT_INFO.len() <= MAX_INFO_LEN);
+const_assert!(size_of::<SuperBlock>() <= BLKSIZE);
+const_assert!(size_of::<DiskINode>() <= BLKSIZE);
+const_assert!(size_of::<DiskEntry>() <= BLKSIZE);
+const_assert!(size_of::<IndirectBlock>() == BLKSIZE);
+const_assert!(DEFAULT_INFO.len() <= MAX_INFO_LEN);

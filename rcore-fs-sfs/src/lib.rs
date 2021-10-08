@@ -774,7 +774,7 @@ impl SimpleFileSystem {
 
         Ok(SimpleFileSystem {
             super_block: RwLock::new(Dirty::new(super_block)),
-            free_map: RwLock::new(Dirty::new(BitVec::from(freemap_disk.as_slice()))),
+            free_map: RwLock::new(Dirty::new(BitVec::from_vec(freemap_disk))),
             inodes: RwLock::new(BTreeMap::new()),
             device,
             self_ptr: Weak::default(),
@@ -1017,10 +1017,10 @@ impl BitsetAlloc for BitVec<Lsb0, u8> {
 
 impl AsBuf for BitVec<Lsb0, u8> {
     fn as_buf(&self) -> &[u8] {
-        self.as_ref()
+        self.as_raw_slice()
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
-        self.as_mut()
+        self.as_mut_raw_slice()
     }
 }
 

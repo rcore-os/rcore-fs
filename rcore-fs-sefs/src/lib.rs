@@ -489,7 +489,7 @@ impl SEFS {
             let block_id = Self::get_freemap_block_id_of_group(i);
             meta_file.read_block(
                 block_id,
-                &mut free_map.as_mut_slice()[BLKSIZE * i..BLKSIZE * (i + 1)],
+                &mut free_map.as_mut_raw_slice()[BLKSIZE * i..BLKSIZE * (i + 1)],
             )?;
         }
 
@@ -676,7 +676,7 @@ impl vfs::FileSystem for SEFS {
         let mut free_map = self.free_map.write();
         if free_map.dirty() {
             for i in 0..super_block.groups as usize {
-                let slice = &free_map.as_slice()[BLKSIZE * i..BLKSIZE * (i + 1)];
+                let slice = &free_map.as_raw_slice()[BLKSIZE * i..BLKSIZE * (i + 1)];
                 self.meta_file
                     .write_all_at(slice, BLKSIZE * Self::get_freemap_block_id_of_group(i))?;
             }
@@ -736,10 +736,10 @@ impl BitsetAlloc for BitVec<Lsb0, u8> {
 
 impl AsBuf for BitVec<Lsb0, u8> {
     fn as_buf(&self) -> &[u8] {
-        self.as_ref()
+        self.as_raw_slice()
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
-        self.as_mut()
+        self.as_mut_raw_slice()
     }
 }
 

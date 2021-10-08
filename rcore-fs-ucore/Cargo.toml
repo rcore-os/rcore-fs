@@ -14,7 +14,7 @@ panic = 'abort' # prevent `_Unwind_Resume` link error
 bitflags = "1.0"
 static_assertions = "0.3"
 rcore-fs = { path = "../rcore-fs" }
-spin = "0.4"
+spin = "0.9"
 lazy_static = { version = "1.2", features = ["spin_no_std"] }
 
 [features]

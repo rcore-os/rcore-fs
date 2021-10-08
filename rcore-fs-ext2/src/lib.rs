@@ -27,8 +27,8 @@ struct Ext2Volume {
 
 #[derive(Clone)]
 pub struct Ext2FileSystem {
-    inner: Synced<Ext2<Size512, Ext2Volume>>,
-    volume: Ext2Volume,
+    _inner: Synced<Ext2<Size512, Ext2Volume>>,
+    _volume: Ext2Volume,
 }
 
 /// A conversion between vfs::FsError and ext2::Error
@@ -73,7 +73,10 @@ impl Ext2FileSystem {
     fn open_internal(device: Arc<dyn Device>) -> Result<Arc<Self>, Ext2Error> {
         let volume = Ext2Volume { inner: device };
         let fs = Synced::new(volume.clone())?;
-        Ok(Arc::new(Ext2FileSystem { inner: fs, volume }))
+        Ok(Arc::new(Ext2FileSystem {
+            _inner: fs,
+            _volume: volume,
+        }))
     }
 }
 

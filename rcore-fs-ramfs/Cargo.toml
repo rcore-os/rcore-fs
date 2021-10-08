@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 rcore-fs = { path = "../rcore-fs" }
-spin = "0.5"
+spin = "0.9"
 log = "0.4"

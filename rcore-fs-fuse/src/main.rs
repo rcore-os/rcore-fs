@@ -54,7 +54,7 @@ enum Cmd {
 }
 
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
     let opt = Opt::from_args();
 
     // open or create

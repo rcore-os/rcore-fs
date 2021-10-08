@@ -136,5 +136,5 @@ pub enum FileType {
     SymLink = 3,
 }
 
-const_assert!(o1; size_of::<SuperBlock>() <= BLKSIZE);
-const_assert!(o2; size_of::<DiskINode>() <= BLKSIZE);
+const_assert!(size_of::<SuperBlock>() <= BLKSIZE);
+const_assert!(size_of::<DiskINode>() <= BLKSIZE);
