@@ -308,6 +308,6 @@ impl INode for MNode {
     }
 
     fn as_any_ref(&self) -> &dyn Any {
-        self
+        self.inode.as_any_ref()
     }
 }
