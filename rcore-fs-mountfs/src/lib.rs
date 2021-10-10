@@ -259,10 +259,6 @@ impl INode for MNode {
     }
 
     fn link(&self, name: &str, other: &Arc<dyn INode>) -> Result<()> {
-        let other = &other
-            .downcast_ref::<Self>()
-            .ok_or(FsError::NotSameFs)?
-            .inode;
         self.inode.link(name, other)
     }
 
@@ -276,10 +272,6 @@ impl INode for MNode {
     }
 
     fn move_(&self, old_name: &str, target: &Arc<dyn INode>, new_name: &str) -> Result<()> {
-        let target = &target
-            .downcast_ref::<Self>()
-            .ok_or(FsError::NotSameFs)?
-            .inode;
         self.inode.move_(old_name, target, new_name)
     }
 
