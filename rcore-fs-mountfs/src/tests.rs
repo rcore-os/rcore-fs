@@ -4,7 +4,7 @@ use rcore_fs_ramfs::RamFS;
 #[test]
 fn mount() {
     let rootfs = MountFS::new(RamFS::new());
-    let root = rootfs.root_inode();
+    let root = rootfs.mountpoint_root_inode();
     let mnt = root.create("mnt", FileType::Dir, 0o777).unwrap();
 
     let ramfs = RamFS::new();
@@ -19,7 +19,7 @@ fn mount() {
 #[test]
 fn remove_busy() {
     let rootfs = MountFS::new(RamFS::new());
-    let root = rootfs.root_inode();
+    let root = rootfs.mountpoint_root_inode();
     let mnt = root.create("mnt", FileType::Dir, 0o777).unwrap();
     let ramfs = RamFS::new();
     mnt.mount(ramfs).unwrap();

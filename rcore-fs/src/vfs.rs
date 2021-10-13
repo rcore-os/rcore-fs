@@ -146,22 +146,21 @@ impl dyn INode {
     }
 
     /// Lookup path from current INode, and follow symlinks at most `follow_times` times
-    pub fn lookup_follow(&self, path: &str, mut follow_times: usize) -> Result<Arc<dyn INode>> {
+    pub fn lookup_follow(&self, path: &str, follow_times: usize) -> Result<Arc<dyn INode>> {
         if self.metadata()?.type_ != FileType::Dir {
             return Err(FsError::NotDir);
         }
 
-        let mut result = self.find(".")?;
-        let mut rest_path = String::from(path);
-        while rest_path != "" {
+        // handle absolute path
+        let (mut result, mut rest_path) = if let Some(rest) = path.strip_prefix('/') {
+            (self.fs().root_inode(), String::from(rest))
+        } else {
+            (self.find(".")?, String::from(path))
+        };
+
+        while !rest_path.is_empty() {
             if result.metadata()?.type_ != FileType::Dir {
                 return Err(FsError::NotDir);
-            }
-            // handle absolute path
-            if let Some('/') = rest_path.chars().next() {
-                result = self.fs().root_inode();
-                rest_path = String::from(&rest_path[1..]);
-                continue;
             }
             let name;
             match rest_path.find('/') {
@@ -174,27 +173,19 @@ impl dyn INode {
                     rest_path = String::from(&rest_path[pos + 1..]);
                 }
             };
-            if name == "" {
+            if name.is_empty() {
                 continue;
             }
             let inode = result.find(&name)?;
             // Handle symlink
             if inode.metadata()?.type_ == FileType::SymLink && follow_times > 0 {
-                follow_times -= 1;
                 let mut content = [0u8; 256];
                 let len = inode.read_at(0, &mut content)?;
-                let path = str::from_utf8(&content[..len]).map_err(|_| FsError::NotDir)?;
+                let link_path =
+                    String::from(str::from_utf8(&content[..len]).map_err(|_| FsError::NotDir)?);
                 // result remains unchanged
-                rest_path = {
-                    let mut new_path = String::from(path);
-                    if let Some('/') = new_path.chars().last() {
-                        new_path += &rest_path;
-                    } else {
-                        new_path += "/";
-                        new_path += &rest_path;
-                    }
-                    new_path
-                };
+                let new_path = link_path + "/" + &rest_path;
+                return result.lookup_follow(&new_path, follow_times - 1);
             } else {
                 result = inode
             }

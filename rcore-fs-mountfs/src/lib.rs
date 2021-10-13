@@ -5,11 +5,12 @@ extern crate alloc;
 extern crate log;
 
 use alloc::{
+    boxed::Box,
     collections::BTreeMap,
     string::String,
     sync::{Arc, Weak},
 };
-use core::any::Any;
+use core::{any::Any, future::Future, pin::Pin};
 use rcore_fs::vfs::*;
 use spin::RwLock;
 
@@ -67,7 +68,7 @@ impl MountFS {
     }
 
     /// Strong type version of `root_inode`
-    pub fn root_inode(&self) -> Arc<MNode> {
+    pub fn mountpoint_root_inode(&self) -> Arc<MNode> {
         MNode {
             inode: self.inner.root_inode(),
             vfs: self.self_ref.upgrade().unwrap(),
@@ -114,14 +115,14 @@ impl MNode {
     fn overlaid_inode(&self) -> Arc<MNode> {
         let inode_id = self.metadata().unwrap().inode;
         if let Some(sub_vfs) = self.vfs.mountpoints.read().get(&inode_id) {
-            sub_vfs.root_inode()
+            sub_vfs.mountpoint_root_inode()
         } else {
             self.self_ref.upgrade().unwrap()
         }
     }
 
     /// Is the root INode of its FS?
-    fn is_root(&self) -> bool {
+    fn is_mountpoint_root(&self) -> bool {
         self.inode.fs().root_inode().metadata().unwrap().inode
             == self.inode.metadata().unwrap().inode
     }
@@ -149,7 +150,7 @@ impl MNode {
                 // TODO: check going up.
                 if root {
                     Ok(self.self_ref.upgrade().unwrap())
-                } else if self.is_root() {
+                } else if self.is_mountpoint_root() {
                     // Here is mountpoint.
                     match &self.vfs.self_mountpoint {
                         Some(inode) => inode.find(root, ".."),
@@ -212,7 +213,10 @@ impl FileSystem for MountFS {
     }
 
     fn root_inode(&self) -> Arc<dyn INode> {
-        self.root_inode()
+        match &self.self_mountpoint {
+            Some(inode) => inode.vfs.root_inode(),
+            None => self.mountpoint_root_inode(),
+        }
     }
 
     fn info(&self) -> FsInfo {
@@ -232,6 +236,13 @@ impl INode for MNode {
 
     fn poll(&self) -> Result<PollStatus> {
         self.inode.poll()
+    }
+
+    /// Poll the events, return a bitmap of events, async version.
+    fn async_poll<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = Result<PollStatus>> + Send + Sync + 'a>> {
+        self.inode.async_poll()
     }
 
     fn metadata(&self) -> Result<Metadata> {
