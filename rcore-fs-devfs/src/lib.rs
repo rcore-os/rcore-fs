@@ -1,7 +1,6 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 extern crate alloc;
-extern crate log;
 
 use alloc::{
     collections::BTreeMap,
@@ -60,6 +59,13 @@ impl DevFS {
     pub fn root(&self) -> Arc<DevINode> {
         self.root.clone()
     }
+
+    /// Generate a new inode id
+    pub fn new_inode_id() -> usize {
+        use core::sync::atomic::*;
+        static ID: AtomicUsize = AtomicUsize::new(1);
+        ID.fetch_add(1, Ordering::SeqCst)
+    }
 }
 
 pub struct DevINode {
@@ -67,17 +73,23 @@ pub struct DevINode {
     parent: Weak<DevINode>,
     fs: RwLock<Weak<DevFS>>,
     children: RwLock<BTreeMap<String, Arc<dyn INode>>>,
+    inode_id: usize,
 }
 
 impl DevINode {
-    fn new() -> Arc<Self> {
+    fn new_with_parent(parent: Weak<DevINode>) -> Arc<Self> {
         Self {
             this: Weak::default(),
-            parent: Weak::default(),
+            parent,
             fs: RwLock::new(Weak::default()),
             children: RwLock::new(BTreeMap::new()),
+            inode_id: DevFS::new_inode_id(),
         }
         .wrap()
+    }
+
+    fn new() -> Arc<Self> {
+        Self::new_with_parent(Weak::default())
     }
 
     /// Wrap pure DevFS with Arc
@@ -99,7 +111,7 @@ impl DevINode {
         if children.contains_key(name) {
             return Err(FsError::EntryExist);
         }
-        let dir = Self::new();
+        let dir = Self::new_with_parent(self.this.clone());
         *dir.fs.write() = self.fs.read().clone();
         children.insert(String::from(name), dir.clone());
         Ok(dir)
@@ -137,7 +149,7 @@ impl INode for DevINode {
     fn metadata(&self) -> Result<Metadata> {
         Ok(Metadata {
             dev: 0,
-            inode: 1,
+            inode: self.inode_id,
             size: self.children.read().len(),
             blk_size: 0,
             blocks: 0,
@@ -145,7 +157,7 @@ impl INode for DevINode {
             mtime: Timespec { sec: 0, nsec: 0 },
             ctime: Timespec { sec: 0, nsec: 0 },
             type_: FileType::Dir,
-            mode: 0o666,
+            mode: 0o755,
             nlinks: 2,
             uid: 0,
             gid: 0,

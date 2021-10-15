@@ -34,9 +34,9 @@ type INodeId = usize;
 /// INode for `MountFS`
 pub struct MNode {
     /// The inner INode
-    pub inode: Arc<dyn INode>,
+    inode: Arc<dyn INode>,
     /// Associated `MountFS`
-    pub vfs: Arc<MountFS>,
+    vfs: Arc<MountFS>,
     /// Weak reference to self
     self_ref: Weak<MNode>,
 }
@@ -95,6 +95,10 @@ impl MNode {
 
     /// Mount file system `fs` at this INode
     pub fn mount(&self, fs: Arc<dyn FileSystem>) -> Result<Arc<MountFS>> {
+        let metadata = self.inode.metadata()?;
+        if metadata.type_ != FileType::Dir {
+            return Err(FsError::NotDir);
+        }
         let new_fs = MountFS {
             inner: fs,
             mountpoints: RwLock::new(BTreeMap::new()),
@@ -102,11 +106,10 @@ impl MNode {
             self_ref: Weak::default(),
         }
         .wrap();
-        let inode_id = self.inode.metadata()?.inode;
         self.vfs
             .mountpoints
             .write()
-            .insert(inode_id, new_fs.clone());
+            .insert(metadata.inode, new_fs.clone());
         Ok(new_fs)
     }
 

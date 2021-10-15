@@ -1,7 +1,16 @@
 use super::*;
 
-#[derive(Default)]
-pub struct NullINode;
+pub struct NullINode {
+    inode_id: usize,
+}
+
+impl NullINode {
+    pub fn new() -> Self {
+        Self {
+            inode_id: DevFS::new_inode_id(),
+        }
+    }
+}
 
 impl INode for NullINode {
     fn read_at(&self, _offset: usize, _buf: &mut [u8]) -> Result<usize> {
@@ -25,7 +34,7 @@ impl INode for NullINode {
     fn metadata(&self) -> Result<Metadata> {
         Ok(Metadata {
             dev: 1,
-            inode: 1,
+            inode: self.inode_id,
             size: 0,
             blk_size: 0,
             blocks: 0,
