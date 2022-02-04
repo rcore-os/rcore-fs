@@ -22,8 +22,7 @@ pub trait INode: Any + Sync + Send {
     fn async_poll<'a>(
         &'a self,
     ) -> Pin<Box<dyn Future<Output = Result<PollStatus>> + Send + Sync + 'a>> {
-        let f = async move || self.poll();
-        Box::pin(f())
+        Box::pin(async move { self.poll() })
     }
 
     /// Get metadata of the INode
