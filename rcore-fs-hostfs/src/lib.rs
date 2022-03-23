@@ -39,7 +39,18 @@ impl FileSystem for HostFS {
     }
 
     fn info(&self) -> FsInfo {
-        unimplemented!()
+        let statvfs =
+            nix::sys::statvfs::statvfs(&self.path).expect("fail to get info from host fs");
+        FsInfo {
+            bsize: statvfs.block_size() as _,
+            frsize: statvfs.fragment_size() as _,
+            blocks: statvfs.blocks() as _,
+            bfree: statvfs.blocks_free() as _,
+            bavail: statvfs.blocks_available() as _,
+            files: statvfs.files() as _,
+            ffree: statvfs.files_free() as _,
+            namemax: statvfs.name_max() as _,
+        }
     }
 }
 
