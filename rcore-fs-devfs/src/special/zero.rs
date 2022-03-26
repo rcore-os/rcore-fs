@@ -12,6 +12,12 @@ impl ZeroINode {
     }
 }
 
+impl Default for ZeroINode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl INode for ZeroINode {
     fn read_at(&self, _offset: usize, buf: &mut [u8]) -> Result<usize> {
         // read zeros

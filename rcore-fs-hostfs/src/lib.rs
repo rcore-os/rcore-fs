@@ -102,29 +102,43 @@ impl INode for HNode {
         Ok(metadata.into())
     }
 
-    fn set_metadata(&self, _metadata: &Metadata) -> Result<()> {
-        warn!("HostFS: set_metadata() is unimplemented");
-        Ok(())
+    fn set_metadata(&self, metadata: &Metadata) -> Result<()> {
+        // TODO 仅修改了文件的最后访问时间和最后修改时间
+        use nix::{
+            libc::{timespec, AT_FDCWD},
+            sys::{
+                stat::{utimensat, UtimensatFlags::FollowSymlink},
+                time::TimeSpec,
+            },
+        };
+        utimensat(
+            Some(AT_FDCWD),
+            &self.path,
+            &TimeSpec::from_timespec(timespec {
+                tv_sec: metadata.atime.sec,
+                tv_nsec: metadata.atime.nsec as _,
+            }),
+            &TimeSpec::from_timespec(timespec {
+                tv_sec: metadata.mtime.sec,
+                tv_nsec: metadata.mtime.nsec as _,
+            }),
+            FollowSymlink,
+        )
+        .map_err(|_| FsError::InvalidParam)
     }
 
     fn sync_all(&self) -> Result<()> {
-        let mut guard = self.open_file()?;
-        let file = guard.as_mut().unwrap();
-        file.sync_all()?;
+        self.open_file()?.as_mut().unwrap().sync_all()?;
         Ok(())
     }
 
     fn sync_data(&self) -> Result<()> {
-        let mut guard = self.open_file()?;
-        let file = guard.as_mut().unwrap();
-        file.sync_data()?;
+        self.open_file()?.as_mut().unwrap().sync_data()?;
         Ok(())
     }
 
     fn resize(&self, len: usize) -> Result<()> {
-        let mut guard = self.open_file()?;
-        let file = guard.as_mut().unwrap();
-        file.set_len(len as u64)?;
+        self.open_file()?.as_mut().unwrap().set_len(len as u64)?;
         Ok(())
     }
 
@@ -177,27 +191,29 @@ impl INode for HNode {
 
     fn find(&self, name: &str) -> Result<Arc<dyn INode>> {
         let new_path = self.path.join(name);
-        if !new_path.exists() {
-            return Err(FsError::EntryNotFound);
+        if new_path.exists() {
+            Ok(Arc::new(HNode {
+                path: new_path,
+                file: Mutex::new(None),
+                fs: self.fs.clone(),
+            }))
+        } else {
+            Err(FsError::EntryNotFound)
         }
-        Ok(Arc::new(HNode {
-            path: new_path,
-            file: Mutex::new(None),
-            fs: self.fs.clone(),
-        }))
     }
 
     fn get_entry(&self, id: usize) -> Result<String> {
-        if !self.path.is_dir() {
-            return Err(FsError::NotDir);
+        if self.path.is_dir() {
+            self.path
+                .read_dir()?
+                .nth(id)
+                .ok_or(FsError::EntryNotFound)??
+                .file_name()
+                .into_string()
+                .map_err(|_| FsError::InvalidParam)
+        } else {
+            Err(FsError::NotDir)
         }
-        self.path
-            .read_dir()?
-            .nth(id)
-            .ok_or(FsError::EntryNotFound)??
-            .file_name()
-            .into_string()
-            .map_err(|_| FsError::InvalidParam)
     }
 
     fn io_control(&self, _cmd: u32, _data: usize) -> Result<usize> {

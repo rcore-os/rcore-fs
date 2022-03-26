@@ -251,7 +251,7 @@ impl INode for LockedINode {
             return Err(FsError::DirNotEmpty);
         }
         let other = file.children.get(name).ok_or(FsError::EntryNotFound)?;
-        if other.0.read().children.len() > 0 {
+        if !other.0.read().children.is_empty() {
             return Err(FsError::DirNotEmpty);
         }
         other.0.write().extra.nlinks -= 1;

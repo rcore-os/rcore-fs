@@ -12,6 +12,12 @@ impl NullINode {
     }
 }
 
+impl Default for NullINode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl INode for NullINode {
     fn read_at(&self, _offset: usize, _buf: &mut [u8]) -> Result<usize> {
         // read nothing

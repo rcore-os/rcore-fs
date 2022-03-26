@@ -14,6 +14,9 @@ pub struct BlockRange {
 }
 
 impl BlockRange {
+    pub fn is_empty(&self) -> bool {
+        self.end == self.begin
+    }
     pub fn len(&self) -> usize {
         self.end - self.begin
     }
@@ -52,6 +55,19 @@ impl Iterator for BlockIter {
             block_size_log2,
         })
     }
+}
+
+// 声明一块未初始化的内存
+/// Declares a block of uninitialized memory.
+///
+/// # Safety
+///
+/// Never read from uninitialized memory!
+#[inline(always)]
+pub unsafe fn uninit_memory<T>() -> T {
+    // 这个写法十分恐怖，但实际上是死灵书的正牌写法
+    #[allow(clippy::uninit_assumed_init)]
+    core::mem::MaybeUninit::uninit().assume_init()
 }
 
 #[cfg(test)]
