@@ -38,10 +38,8 @@ struct Ext2Error {
 }
 
 impl core::convert::From<Ext2Error> for vfs::FsError {
-    fn from(err: Ext2Error) -> Self {
-        match err.inner {
-            _ => vfs::FsError::DeviceError,
-        }
+    fn from(_err: Ext2Error) -> Self {
+        vfs::FsError::DeviceError
     }
 }
 
@@ -91,10 +89,10 @@ impl Volume<u8, Size512> for Ext2Volume {
         unimplemented!()
     }
 
-    unsafe fn slice_unchecked<'a>(
-        &'a self,
+    unsafe fn slice_unchecked(
+        &self,
         range: Range<Address<Size512>>,
-    ) -> VolumeSlice<'a, u8, Size512> {
+    ) -> VolumeSlice<'_, u8, Size512> {
         let index = range.start;
         let len = range.end - range.start;
         let mut vec = vec![0; len.into_index() as usize];
@@ -104,10 +102,10 @@ impl Volume<u8, Size512> for Ext2Volume {
         VolumeSlice::new_owned(vec, index)
     }
 
-    fn slice<'a>(
-        &'a self,
+    fn slice(
+        &self,
         range: Range<Address<Size512>>,
-    ) -> Result<VolumeSlice<'a, u8, Size512>, Self::Error> {
+    ) -> Result<VolumeSlice<'_, u8, Size512>, Self::Error> {
         let index = range.start;
         let len = range.end - range.start;
         let mut vec = vec![0; len.into_index() as usize];

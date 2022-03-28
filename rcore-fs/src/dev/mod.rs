@@ -1,5 +1,4 @@
-use crate::util::*;
-use crate::vfs::Timespec;
+use crate::{util::*, vfs::Timespec};
 
 pub mod block_cache;
 pub mod std_impl;
@@ -58,13 +57,12 @@ impl<T: BlockDevice> Device for T {
                 // Read to target buf directly
                 try0!(len, BlockDevice::read_at(self, range.block, buf));
             } else {
-                use core::mem::MaybeUninit;
-                let mut block_buf: [u8; 1 << 10] = unsafe { MaybeUninit::uninit().assume_init() };
+                let mut block_buf: [u8; 1 << 10] = unsafe { uninit_memory() };
                 assert!(Self::BLOCK_SIZE_LOG2 <= 10);
                 // Read to local buf first
                 try0!(len, BlockDevice::read_at(self, range.block, &mut block_buf));
                 // Copy to target buf then
-                buf.copy_from_slice(&mut block_buf[range.begin..range.end]);
+                buf.copy_from_slice(&block_buf[range.begin..range.end]);
             }
         }
         Ok(buf.len())
@@ -85,8 +83,7 @@ impl<T: BlockDevice> Device for T {
                 // Write to target buf directly
                 try0!(len, BlockDevice::write_at(self, range.block, buf));
             } else {
-                use core::mem::MaybeUninit;
-                let mut block_buf: [u8; 1 << 10] = unsafe { MaybeUninit::uninit().assume_init() };
+                let mut block_buf: [u8; 1 << 10] = unsafe { uninit_memory() };
                 assert!(Self::BLOCK_SIZE_LOG2 <= 10);
                 // Read to local buf first
                 try0!(len, BlockDevice::read_at(self, range.block, &mut block_buf));
@@ -116,7 +113,7 @@ mod test {
                 return Err(DevError);
             }
             let begin = block_id << 2;
-            buf[..4].copy_from_slice(&mut self.lock().unwrap()[begin..begin + 4]);
+            buf[..4].copy_from_slice(&self.lock().unwrap()[begin..begin + 4]);
             Ok(())
         }
         fn write_at(&self, block_id: BlockId, buf: &[u8]) -> Result<()> {

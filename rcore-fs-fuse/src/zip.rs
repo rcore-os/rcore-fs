@@ -1,14 +1,16 @@
 use std::error::Error;
 use std::fs;
 use std::io::{Read, Write};
-use std::mem::MaybeUninit;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::str;
 use std::sync::Arc;
 
-use rcore_fs::vfs::{FileType, INode};
+use rcore_fs::{
+    util::uninit_memory,
+    vfs::{FileType, INode},
+};
 
 const DEFAULT_MODE: u32 = 0o664;
 const BUF_SIZE: usize = 0x1000;
@@ -24,7 +26,7 @@ pub fn zip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error>>
             let inode = inode.create(name, FileType::File, DEFAULT_MODE)?;
             let mut file = fs::File::open(entry.path())?;
             inode.resize(file.metadata()?.len() as usize)?;
-            let mut buf: [u8; BUF_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+            let mut buf: [u8; BUF_SIZE] = unsafe { uninit_memory() };
             let mut offset = 0usize;
             let mut len = BUF_SIZE;
             while len == BUF_SIZE {
@@ -59,7 +61,7 @@ pub fn unzip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error
         match info.type_ {
             FileType::File => {
                 let mut file = fs::File::create(&path)?;
-                let mut buf: [u8; BUF_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+                let mut buf: [u8; BUF_SIZE] = unsafe { uninit_memory() };
                 let mut offset = 0usize;
                 let mut len = BUF_SIZE;
                 while len == BUF_SIZE {
@@ -73,7 +75,7 @@ pub fn unzip_dir(path: &Path, inode: Arc<dyn INode>) -> Result<(), Box<dyn Error
                 unzip_dir(path.as_path(), inode)?;
             }
             FileType::SymLink => {
-                let mut buf: [u8; BUF_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+                let mut buf: [u8; BUF_SIZE] = unsafe { uninit_memory() };
                 let len = inode.read_at(0, buf.as_mut())?;
                 #[cfg(unix)]
                 std::os::unix::fs::symlink(str::from_utf8(&buf[..len]).unwrap(), path)?;

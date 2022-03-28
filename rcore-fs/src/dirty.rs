@@ -26,7 +26,6 @@ impl<T> Dirty<T> {
     }
 
     /// Returns true if dirty, false otherwise
-    #[allow(dead_code)]
     pub fn dirty(&self) -> bool {
         self.dirty
     }
