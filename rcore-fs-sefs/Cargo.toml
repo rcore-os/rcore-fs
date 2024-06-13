@@ -9,7 +9,7 @@ rcore-fs = { path = "../rcore-fs" }
 static_assertions = "1.1"
 spin = "0.9"
 log = "0.4"
-bitvec = { version = "0.22", default-features = false, features = ["alloc"] }
+bitvec = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [features]
 std = ["rcore-fs/std"]

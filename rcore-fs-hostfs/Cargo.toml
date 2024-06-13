@@ -6,5 +6,5 @@ edition = "2021"
 
 [dependencies]
 rcore-fs = { path = "../rcore-fs", features = ["std"] }
-nix = "0.23"
+nix = { version = "0.29", features = ["fs"] }
 log = "0.4"
