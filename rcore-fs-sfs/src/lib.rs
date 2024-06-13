@@ -748,7 +748,7 @@ pub struct SimpleFileSystem {
     /// on-disk superblock
     super_block: RwLock<Dirty<SuperBlock>>,
     /// blocks in use are mared 0
-    free_map: RwLock<Dirty<BitVec<Lsb0, u8>>>,
+    free_map: RwLock<Dirty<BitVec<u8, Lsb0>>>,
     /// inode list
     inodes: RwLock<BTreeMap<INodeId, Weak<INodeImpl>>>,
     /// device
@@ -1007,7 +1007,7 @@ trait BitsetAlloc {
     fn alloc(&mut self) -> Option<usize>;
 }
 
-impl BitsetAlloc for BitVec<Lsb0, u8> {
+impl BitsetAlloc for BitVec<u8, Lsb0> {
     fn alloc(&mut self) -> Option<usize> {
         // TODO: more efficient
         let id = (0..self.len()).find(|&i| self[i]);
@@ -1018,12 +1018,12 @@ impl BitsetAlloc for BitVec<Lsb0, u8> {
     }
 }
 
-impl AsBuf for BitVec<Lsb0, u8> {
+impl AsBuf for BitVec<u8, Lsb0> {
     fn as_buf(&self) -> &[u8] {
         self.as_raw_slice()
     }
     fn as_buf_mut(&mut self) -> &mut [u8] {
-        self.as_mut_raw_slice()
+        self.as_raw_mut_slice()
     }
 }
 
